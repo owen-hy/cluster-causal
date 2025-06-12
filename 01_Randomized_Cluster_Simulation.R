@@ -6,9 +6,8 @@ library(MASS)
 library(boot)
 library(extraDistr)
 library(geepack)
-set.seed(123)
 
-num_iter <- 100 # Dane used 5000, just doing 100 until I learn how to parallel code
+num_iter <- 500 # Dane used 5000, just doing 500 until I learn how to parallel code
 num_clusters <- 30
 
 calculate_ATE <- function(data, parametric){
@@ -185,30 +184,37 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
 
 # Running the factorial model to evaluate the ATE bias
 
-start <- Sys.time()
-
 small <- c(100, 300)
 large <- c(500, 1000)
 ICC_vals <- c(0.01, 0.1)
 size_range <- list(small, large)
 
-result <- list()
-i <- 1
+parameters <- expand.grid(
+  size_idx = 1:2,
+  para = 0:1,
+  ICC = ICC_vals,
+  ind = 0:1
+)
 
-for(size in 1:2){ # Cluster Size
-  for(para in 0:1){ # Is it parametric probability estimation?
-    for(ICC in ICC_vals){ # Potential ICC values
-      for(ind in 0:1){ # Is independent from covariates?
-        result[[i]] <- ATE_sim_one(size_range[[size]], para, ICC, ind)
-        i <- i + 1
-      }
-    }
-  }
-}
+## Setting up Parallel coding
+nCores <- detectCores() - 1
+clust <- makeCluster(nCores)
 
-end <- Sys.time()
+set.seed(999)
+clusterSetRNGStream(clust, 123)
+cluster_export(clust, varlist = c("ATE_sim_one", "boot_ATE", "calculate_ATE"))
+clusterEvalQ(clust, {
+  library(tidyverse)
+  library(MASS)
+  library(boot)
+  library(extraDistr)
+  library(geepack)
+})
 
-end - start
+results <- parLapply(clust, seq_len(nrow(parameters)), function(i){
+  param <- parameters[i, ]
+  ATE_sim_one(size_range[[param$size_idx]], param$para, param$ICC, param$ind)
+})
 
 # Evaluating results
 
