@@ -12,10 +12,10 @@ start <- Sys.time()
 
 num_iter <- 100 # Dane used 5000, just doing 100 until I learn how to parallel code
 num_clusters <- 30
-ATE <- rep(NA, num_iter)
-ATE_est <- rep(NA, num_iter)
 
 ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
+  ATE <- rep(NA, num_iter)
+  ATE_est <- rep(NA, num_iter)
   for(i in 1:num_iter) {
     data <- list()
     for (j in 1:num_clusters) {
@@ -55,7 +55,8 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
         Y_ij_0_star_pi <-  inv.logit(-1.75 + (c(0.25, -0.25, -0.15, -0.1) %*% cluster_level_data) + (1.5 * Y_ij_0) + b_i_ystar)# Bernoulli parameter for calculating Y*_ij(0)
         Y_ij_star_0 <- sapply(Y_ij_0_star_pi, function(p)
           rbern(1, p))
-        Y_ij_1_star_pi <-  inv.logit(-1.25 + (c(-0.25, -0.15, -0.25, -0.1) %*% cluster_level_data) + (2.5 * Y_ij_0) + b_i_ystar) # Bernoulli parameter for calculating Y*_ij(1)
+        ## READ: It probably is this line LMAO
+        Y_ij_1_star_pi <-  inv.logit(-1.25 + (c(-0.25, -0.15, -0.25, -0.1) %*% cluster_level_data) + (2.5 * Y_ij_1) + b_i_ystar) # Bernoulli parameter for calculating Y*_ij(1)
         Y_ij_star_1 <- sapply(Y_ij_1_star_pi, function(p)
           rbern(1, p))
       }
@@ -160,6 +161,8 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
     ))) / nrow(realistic_data)
     ATE_est[i] <- E_1 - E_0
   }
+  return(list(ATE = mean(ATE), ATE_est = mean(ATE_est), size = if_else(cluster_range[1] == 100, "small", "large"),
+              parametric = parametric, ICC = ICC, independent = independent))
 }
 
 end <- Sys.time()
@@ -169,10 +172,34 @@ end - start
 
 # Running the factorial model to evaluate the ATE bias
 
+start <- Sys.time()
+
 small <- c(100, 300)
 large <- c(500, 1000)
-size <- list(small, large)
+ICC_vals <- c(0.01, 0.1)
+size_range <- list(small, large)
 
+result <- list()
+i <- 1
+
+for(size in 1:2){ # Cluster Size
+  for(para in 0:1){ # Is it parametric probability estimation?
+    for(ICC in ICC_vals){ # Potential ICC values
+      for(ind in 0:1){ # Is independent from covariates?
+        result[[i]] <- ATE_sim_one(size_range[[size]], para, ICC, ind)
+        i <- i + 1
+      }
+    }
+  }
+}
+
+end <- Sys.time()
+
+end - start
+
+# Evaluating results
+
+result <- do.call(rbind, lapply(result, as.data.frame))
 
 
 # For troubleshooting
