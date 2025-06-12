@@ -177,6 +177,8 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
   }
   return(list(ATE = mean(ATE), ATE_est = mean(ATE_est), 
               coverage = mean(coverage),
+              bias_se = sqrt(var(ATE_est) / num_iter),
+              cov_se = sqrt((mean(coverage) * (1 - mean(coverage))) / num_iter),
               size = if_else(cluster_range[1] == 100, "small", "large"),
               parametric = parametric, ICC = ICC, independent = independent))
 }
@@ -193,7 +195,8 @@ parameters <- expand.grid(
   size_idx = 1:2,
   para = 0:1,
   ICC = ICC_vals,
-  ind = 0:1
+  ind = 0:1,
+  stringsAsFactors = FALSE
 )
 
 ## Setting up Parallel coding
@@ -202,7 +205,7 @@ clust <- makeCluster(nCores)
 
 set.seed(999)
 clusterSetRNGStream(clust, 123)
-cluster_export(clust, varlist = c("ATE_sim_one", "boot_ATE", "calculate_ATE"))
+clusterExport(clust, varlist = c("ATE_sim_one", "boot_ATE", "calculate_ATE", "parameters", "small", "large", "ICC_vals", "size_range", "num_iter", "num_clusters"))
 clusterEvalQ(clust, {
   library(tidyverse)
   library(MASS)
@@ -211,10 +214,13 @@ clusterEvalQ(clust, {
   library(geepack)
 })
 
-results <- parLapply(clust, seq_len(nrow(parameters)), function(i){
+system.time(results <- parLapply(clust, seq_len(nrow(parameters)), function(i){
   param <- parameters[i, ]
   ATE_sim_one(size_range[[param$size_idx]], param$para, param$ICC, param$ind)
 })
+)
+
+stopCluster(clust)
 
 # Evaluating results
 
