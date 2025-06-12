@@ -8,14 +8,92 @@ library(extraDistr)
 library(geepack)
 set.seed(123)
 
-start <- Sys.time()
-
 num_iter <- 100 # Dane used 5000, just doing 100 until I learn how to parallel code
 num_clusters <- 30
+
+calculate_ATE <- function(data, parametric){
+  validation <- data |>
+    filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
+  pi_hat <- mean(data$treatment)
+  
+  # Fitting logistic model
+  expit <- geeglm(
+    Y_ij_star ~ (treatment * Y_ij) + (treatment * x1) + (treatment * x2) + (treatment *
+                                                                              x3) + (x4),
+    data = validation,
+    family = "binomial",
+    id = cluster_num
+  )
+  
+  # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
+  
+  ## Removing previously computed probabilities
+  data <- data |>
+    dplyr::select(-starts_with("p"))
+  
+  if (parametric) {
+    ## Fitting P(0, 1, X_ij)
+    temp <- data |>
+      dplyr::select(x1, x2, x3, x4, cluster_num) |>
+      mutate(Y_ij = 0, treatment = 1)
+    p_0_1 <- predict(expit, newdata = temp, type = 'response')
+    ## Fitting P(1, 1, X_ij)
+    temp <- data |>
+      dplyr::select(x1, x2, x3, x4, cluster_num) |>
+      mutate(Y_ij = 1, treatment = 1)
+    p_1_1 <- predict(expit, newdata = temp, type = 'response')
+    ## Fitting P(0, 0, X_ij)
+    temp <- data |>
+      dplyr::select(x1, x2, x3, x4, cluster_num) |>
+      mutate(Y_ij = 0, treatment = 0)
+    p_0_0 <- predict(expit, newdata = temp, type = 'response')
+    ## Fitting P(1, 0, X_ij)
+    temp <- data |>
+      dplyr::select(x1, x2, x3, x4, cluster_num) |>
+      mutate(Y_ij = 1, treatment = 0)
+    p_1_0 <- predict(expit, newdata = temp, type = 'response')
+  } else{
+    p_0_1 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * validation$treatment) / sum((1 - validation$Y_ij) * validation$treatment)
+    
+    p_1_1 <- sum(validation$Y_ij_star * validation$Y_ij * validation$treatment) / sum(validation$Y_ij * validation$treatment)
+    
+    p_0_0 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * (1 - validation$treatment)) / sum((1 - validation$Y_ij) * (1 - validation$treatment))
+    
+    p_1_0 <- sum(validation$Y_ij_star * validation$Y_ij * (1 - validation$treatment)) / sum(validation$Y_ij * (1 - validation$treatment))
+  }
+  
+  realistic_data <- cbind(data, p_0_1, p_1_1, p_0_0, p_1_0)
+  
+  # Calculating the actual SSW ATE
+  
+  E_1 <- sum(((realistic_data$treatment * realistic_data$Y_ij_star) - (pi_hat * realistic_data$p_0_1)
+  ) / (pi_hat * (
+    realistic_data$p_1_1 - realistic_data$p_0_1
+  ))) / nrow(realistic_data)
+  E_0 <- sum((((1 - realistic_data$treatment) * realistic_data$Y_ij_star
+  ) - ((1 - pi_hat) * realistic_data$p_0_0)) / ((1 - pi_hat) * (
+    realistic_data$p_1_0 - realistic_data$p_0_0))) / nrow(realistic_data)
+  return(E_1 - E_0)
+}
+
+boot_ATE <- function(data, parametric){
+  sample_ATE <- replicate(1000, {
+    # Should this be by individual or by clusters? Seemingly Clusters
+    sample_idx <- sample(1:length(unique(data$cluster_num)), size = 30 ,replace = T)
+    boot_data <- lapply(seq_along(sample_idx), function(idx){
+      data[data$cluster_num == sample_idx[idx], ] |>
+        mutate(cluster_num = idx)
+    })
+    boot_data <- do.call(rbind, boot_data)
+    calculate_ATE(as.data.frame(boot_data), parametric)
+  })
+  return(c(quantile(sample_ATE, probs = 0.025), quantile(sample_ATE, probs = 0.975)))
+}
 
 ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
   ATE <- rep(NA, num_iter)
   ATE_est <- rep(NA, num_iter)
+  coverage <- rep(NA, num_iter)
   for(i in 1:num_iter) {
     data <- list()
     for (j in 1:num_clusters) {
@@ -92,73 +170,17 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
         Y_ij = coalesce(Y_ij_0, Y_ij_1)
       )
 
-    validation <- realistic_data |>
-      filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
-    pi_hat <- mean(realistic_data$treatment)
-
-    # Fitting logistic model
-    expit <- geeglm(
-      Y_ij_star ~ (treatment * Y_ij) + (treatment * x1) + (treatment * x2) + (treatment *
-                                                                                x3) + (x4),
-      data = validation,
-      family = "binomial",
-      id = cluster_num
-    )
-
-    # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
-
-    if (parametric) {
-      ## Fitting P(0, 1, X_ij)
-      temp <- realistic_data |>
-        dplyr::select(x1, x2, x3, x4, cluster_num) |>
-        mutate(Y_ij = 0, treatment = 1)
-      p_0_1 <- predict(expit, newdata = temp, type = 'response')
-      ## Fitting P(1, 1, X_ij)
-      temp <- realistic_data |>
-        dplyr::select(x1, x2, x3, x4, cluster_num) |>
-        mutate(Y_ij = 1, treatment = 1)
-      p_1_1 <- predict(expit, newdata = temp, type = 'response')
-      ## Fitting P(0, 0, X_ij)
-      temp <- realistic_data |>
-        dplyr::select(x1, x2, x3, x4, cluster_num) |>
-        mutate(Y_ij = 0, treatment = 0)
-      p_0_0 <- predict(expit, newdata = temp, type = 'response')
-      ## Fitting P(1, 0, X_ij)
-      temp <- realistic_data |>
-        dplyr::select(x1, x2, x3, x4, cluster_num) |>
-        mutate(Y_ij = 1, treatment = 0)
-      p_1_0 <- predict(expit, newdata = temp, type = 'response')
-    } else{
-      p_0_1 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * validation$treatment) / sum((1 - validation$Y_ij) * validation$treatment)
-
-      p_1_1 <- sum(validation$Y_ij_star * validation$Y_ij * validation$treatment) / sum(validation$Y_ij * validation$treatment)
-
-      p_0_0 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * (1 - validation$treatment)) / sum((1 - validation$Y_ij) * (1 - validation$treatment))
-
-      p_1_0 <- sum(validation$Y_ij_star * validation$Y_ij * (1 - validation$treatment)) / sum(validation$Y_ij * (1 - validation$treatment))
-    }
-
-    realistic_data <- cbind(realistic_data, p_0_1, p_1_1, p_0_0, p_1_0)
-
-    # Calculating the actual SSW ATE
-
-    E_1 <- sum(((realistic_data$treatment * realistic_data$Y_ij_star) - (pi_hat * realistic_data$p_0_1)
-    ) / (pi_hat * (
-      realistic_data$p_1_1 - realistic_data$p_0_1
-    ))) / nrow(realistic_data)
-    E_0 <- sum((((1 - realistic_data$treatment) * realistic_data$Y_ij_star
-    ) - ((1 - pi_hat) * realistic_data$p_0_0)) / ((1 - pi_hat) * (
-      realistic_data$p_1_0 - realistic_data$p_0_0
-    ))) / nrow(realistic_data)
-    ATE_est[i] <- E_1 - E_0
+    ATE_est[i] <- calculate_ATE(realistic_data, parametric)
+    CI_boot <- boot_ATE(realistic_data, parametric)
+    # CI_boot returns c(Lower, Upper) bootstrapped confidence intervals
+    coverage[i] <- CI_boot[1] < mean(ATE) & mean(ATE) < CI_boot[2]
+    
   }
-  return(list(ATE = mean(ATE), ATE_est = mean(ATE_est), size = if_else(cluster_range[1] == 100, "small", "large"),
+  return(list(ATE = mean(ATE), ATE_est = mean(ATE_est), 
+              coverage = mean(coverage),
+              size = if_else(cluster_range[1] == 100, "small", "large"),
               parametric = parametric, ICC = ICC, independent = independent))
 }
-
-end <- Sys.time()
-
-end - start
 
 
 # Running the factorial model to evaluate the ATE bias
@@ -191,15 +213,3 @@ end - start
 # Evaluating results
 
 result <- do.call(rbind, lapply(result, as.data.frame))
-
-
-# For troubleshooting
-ggplot(realistic_data) +
-  geom_density(aes(x = p_0_0), color = "red") +
-  geom_density(aes(x = p_0_1), color = "blue") +
-  geom_density(aes(x = p_1_1), color = "green") +
-  geom_density(aes(x = p_1_0), color = "black") +
-  labs(title = "Density of Probabilities",
-       subtitle = "Denominators are P(1, 1) (Green) - P(0, 1) (Blue) & P(1, 0) (Black)- P(0, 0) (Red)",
-       x = "Probability") +
-  theme_bw()
