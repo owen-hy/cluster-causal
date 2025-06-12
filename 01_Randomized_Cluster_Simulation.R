@@ -37,37 +37,28 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
       # Starting with Y_ij(0) and Y_ij(1)
       b_i_y <- rnorm(1, 0, sqrt((ICC * (pi^2)) / (3 * (1 - ICC))))
       Y_ij_0_pi <- inv.logit((-1) + (c(0.15, 0.2, 0.15, -0.15) %*% cluster_level_data) + b_i_y) # Bernoulli parameter for calculating Y_ij(0)
-      Y_ij_0 <- sapply(Y_ij_0_pi, function(p)
-        rbern(1, p))
+      Y_ij_0 <- rbern(length(Y_ij_0_pi), Y_ij_0_pi)
       Y_ij_1_pi <- inv.logit((-0.25) + (c(0.15, 0.2, 0.15, -0.15) %*% cluster_level_data) + b_i_y) # Bernoulli parameter for calculating Y_ij(1)
-      Y_ij_1 <- sapply(Y_ij_1_pi, function(p)
-        rbern(1, p))
+      Y_ij_1 <- rbern(length(Y_ij_1_pi), Y_ij_1_pi)
       # Now moving onto Y*_ij(0) and Y*_ij(1)
       b_i_ystar <- 0 # READ: Paper stated that they kept this at zero?
       if(independent){
         Y_ij_0_star_pi <-  inv.logit(-1.25 + (1.5 * Y_ij_0) + b_i_ystar)# Bernoulli parameter for calculating Y*_ij(0)
-        Y_ij_star_0 <- sapply(Y_ij_0_star_pi, function(p)
-          rbern(1, p))
+        Y_ij_star_0 <- rbern(length(Y_ij_0_star_pi), Y_ij_0_star_pi)
         Y_ij_1_star_pi <-  inv.logit(-1 + (2.5 * Y_ij_1) + b_i_ystar) # Bernoulli parameter for calculating Y*_ij(1)
-        Y_ij_star_1 <- sapply(Y_ij_1_star_pi, function(p)
-          rbern(1, p))
+        Y_ij_star_1 <- rbern(length(Y_ij_1_star_pi), Y_ij_1_star_pi)
       } else{
         Y_ij_0_star_pi <-  inv.logit(-1.75 + (c(0.25, -0.25, -0.15, -0.1) %*% cluster_level_data) + (1.5 * Y_ij_0) + b_i_ystar)# Bernoulli parameter for calculating Y*_ij(0)
-        Y_ij_star_0 <- sapply(Y_ij_0_star_pi, function(p)
-          rbern(1, p))
-        ## READ: It probably is this line LMAO
+        Y_ij_star_0 <- rbern(length(Y_ij_0_star_pi), Y_ij_0_star_pi)
         Y_ij_1_star_pi <-  inv.logit(-1.25 + (c(-0.25, -0.15, -0.25, -0.1) %*% cluster_level_data) + (2.5 * Y_ij_1) + b_i_ystar) # Bernoulli parameter for calculating Y*_ij(1)
-        Y_ij_star_1 <- sapply(Y_ij_1_star_pi, function(p)
-          rbern(1, p))
+        Y_ij_star_1 <- rbern(length(Y_ij_1_star_pi), Y_ij_1_star_pi)
       }
       # Now, we calculate V_ij
       b_iv <- rnorm(1, 0, sqrt((ICC * (pi^2)) / (3 * (1 - ICC))))
       V_ij_0_pi <- inv.logit((-0.25) + (c(-0.5, -0.5, 0.25, -0.25) %*% cluster_level_data) + (-0.15 * Y_ij_0)  + b_iv) # Bernoulli parameter for calculating V_ij(0)
-      V_ij_0 <- sapply(V_ij_0_pi, function(p)
-        rbern(1, p))
+      V_ij_0 <- rbern(length(V_ij_0_pi), V_ij_0_pi)
       V_ij_1_pi <- inv.logit((-0.5) + (c(-0.5, -0.5, 0.25, -0.25) %*% cluster_level_data) + (0.15 * Y_ij_1)  + b_iv)  # Bernoulli parameter for calculating V_ij(1)
-      V_ij_1 <- sapply(V_ij_1_pi, function(p)
-        rbern(1, p))
+      V_ij_1 <- rbern(length(V_ij_1_pi), V_ij_1_pi)
       # Finally, We randomly assign our treatment
       treatment <- rbern(1)
       cluster_num <- j
