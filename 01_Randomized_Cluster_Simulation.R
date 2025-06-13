@@ -99,8 +99,7 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
     for (j in 1:num_clusters) {
       # Generating our covariate matrix X_i per cluster
       cluster_size <- rdunif(1, cluster_range[1], cluster_range[2])
-      x1 <- mvrnorm(mu = rep(1, cluster_size),
-                    Sigma = diag(x = cluster_size))
+      x1 <- rnorm(cluster_size, mean = 1, sd = 1)
       x2 <- mvrnorm(mu = rep(0.5, cluster_size), Sigma = ((0.5 * diag(x = cluster_size)) + (
         0.05 * matrix(
           data = 1,
@@ -108,7 +107,7 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
           ncol = cluster_size
         )
       )))
-      x3 <- rbern(cluster_size, prob = 0.55)
+      x3 <- rbinom(cluster_size, 1, 0.55)
       x4 <- rep(runif(1), cluster_size)
       cluster_level_data <- rbind(x1, x2, x3, x4) #X_i
       # Generating our observed outcome, Y_ij, Y*_ij, and V_ij
@@ -176,6 +175,7 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
     coverage[i] <- CI_boot[1] < ATE[i] & ATE[i] < CI_boot[2]
   }
   return(list(ATE = mean(ATE), ATE_est = mean(ATE_est), 
+              variance = var(ATE_est),
               coverage = mean(coverage),
               bias_se = sqrt(var(ATE_est) / num_iter),
               cov_se = sqrt((mean(coverage) * (1 - mean(coverage))) / num_iter),
