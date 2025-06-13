@@ -6,8 +6,9 @@ library(MASS)
 library(boot)
 library(extraDistr)
 library(geepack)
+library(parallel)
 
-num_iter <- 500 # Dane used 5000, just doing 500 until I learn how to parallel code
+num_iter <- 100 # Dane used 5000, just doing 100 until I learn how to parallel code
 num_clusters <- 30
 
 calculate_ATE <- function(data, parametric){
@@ -76,15 +77,15 @@ calculate_ATE <- function(data, parametric){
 }
 
 boot_ATE <- function(data, parametric){
-  sample_ATE <- replicate(1000, {
+  sample_ATE <- replicate(100, {
     # Should this be by individual or by clusters? Seemingly Clusters
     sample_idx <- sample(1:length(unique(data$cluster_num)), size = 30 ,replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
       data[data$cluster_num == sample_idx[idx], ] |>
         mutate(cluster_num = idx)
     })
-    boot_data <- do.call(rbind, boot_data)
-    calculate_ATE(as.data.frame(boot_data), parametric)
+    boot_data <- data.table::rbindlist(boot_data)
+    calculate_ATE(boot_data, parametric)
   })
   return(c(quantile(sample_ATE, probs = 0.025), quantile(sample_ATE, probs = 0.975)))
 }
@@ -172,8 +173,7 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
     ATE_est[i] <- calculate_ATE(realistic_data, parametric)
     CI_boot <- boot_ATE(realistic_data, parametric)
     # CI_boot returns c(Lower, Upper) bootstrapped confidence intervals
-    coverage[i] <- CI_boot[1] < mean(ATE) & mean(ATE) < CI_boot[2]
-    
+    coverage[i] <- CI_boot[1] < ATE[i] & ATE[i] < CI_boot[2]
   }
   return(list(ATE = mean(ATE), ATE_est = mean(ATE_est), 
               coverage = mean(coverage),
