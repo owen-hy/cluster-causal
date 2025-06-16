@@ -17,12 +17,11 @@ calculate_ATE <- function(data, parametric){
   pi_hat <- mean(data$treatment)
   
   # Fitting logistic model
-  expit <- geeglm(
+  expit <- glm(
     Y_ij_star ~ (treatment * Y_ij) + (treatment * x1) + (treatment * x2) + (treatment *
                                                                               x3) + (x4),
     data = validation,
-    family = "binomial",
-    id = cluster_num
+    family = "binomial"
   )
   
   # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
@@ -225,3 +224,4 @@ stopCluster(clust)
 # Evaluating results
 
 result <- do.call(rbind, lapply(result, as.data.frame))
+write.csv(result, file = "MC-Random-Results.csv")
