@@ -206,7 +206,6 @@ n_jobs <- nrow(parameters)
 seeds <- replicate(n_jobs, .Random.seed, simplify = FALSE)
 
 system.time(results <- mclapply(seq_len(n_jobs), function(i){
-  .Random.seed <<- seeds[[i]]
   param <- parameters[i, ]
   ATE_sim_one(size_range[[param$size_idx]], param$para, param$ICC, param$ind)
 }, mc.cores = 50)
@@ -214,5 +213,5 @@ system.time(results <- mclapply(seq_len(n_jobs), function(i){
 
 # Evaluating results
 
-result <- do.call(rbind, lapply(result, as.data.frame))
-write.csv(result, file = "MC-Random-Results.csv")
+result <- do.call(rbind, lapply(results, as.data.frame))
+write.csv(results, file = "MC-Random-Results.csv")
