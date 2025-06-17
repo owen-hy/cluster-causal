@@ -205,7 +205,7 @@ set.seed(999)
 n_jobs <- nrow(parameters)
 seeds <- replicate(n_jobs, .Random.seed, simplify = FALSE)
 
-system.time(results <- mclapply(clust, seq_len(nrow(parameters)), function(i){
+system.time(results <- mclapply(seq_len(n_jobs), function(i){
   .Random.seed <<- seeds[[i]]
   param <- parameters[i, ]
   ATE_sim_one(size_range[[param$size_idx]], param$para, param$ICC, param$ind)
