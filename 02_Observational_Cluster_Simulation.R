@@ -1,20 +1,22 @@
-# File Purpose: This R script is designed to replicate the result of Dane's estimator in a simulation study
-# This is done under the ideal situation where all clusters are randomized (Thus no propensity model is needed)
+# File Purpose: This R script is designed to account for an observational setting
+# Specifically, we are now dealing with a scenario where {Y_ij(0), Y_ij(1)} _|_ T_ij | X_ij
 
 library(tidyverse)
 library(MASS)
 library(boot)
 library(extraDistr)
-library(geepack)
 library(parallel)
 
-num_iter <- 100 # Dane used 5000, just doing 100 until I learn how to parallel code
+num_iter <- 500 # Dane used 5000, just doing 100 until I learn how to parallel code
 num_clusters <- 30
 
 calculate_ATE <- function(data, parametric){
   validation <- data |>
     filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
-  pi_hat <- mean(data$treatment)
+  
+  # Fitting a propensity score
+  pi_hat_model <- glm(T_ij ~ x1 + x2 + x3 + x4, data = data, family = "binomial")
+  pi_hat <- predict(pi_hat_model, newdata = data, type = 'response')
   
   # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
   
@@ -23,7 +25,6 @@ calculate_ATE <- function(data, parametric){
     dplyr::select(-starts_with("p"))
   
   if (parametric) {
-    # Fitting logistic model
     expit <- glm(
       Y_ij_star ~ (treatment * Y_ij) + (treatment * x1) + (treatment * x2) + (treatment *
                                                                                 x3) + (x4),
@@ -52,24 +53,24 @@ calculate_ATE <- function(data, parametric){
       mutate(Y_ij = 1, treatment = 0)
     p_1_0 <- predict(expit, newdata = temp, type = 'response')
   } else{
-    p_0_1 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * validation$treatment) / sum((1 - validation$Y_ij) * validation$treatment)
+    p_0_1 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * validation$T_ij) / sum((1 - validation$Y_ij) * validation$T_ij)
     
-    p_1_1 <- sum(validation$Y_ij_star * validation$Y_ij * validation$treatment) / sum(validation$Y_ij * validation$treatment)
+    p_1_1 <- sum(validation$Y_ij_star * validation$Y_ij * validation$T_ij) / sum(validation$Y_ij * validation$T_ij)
     
-    p_0_0 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * (1 - validation$treatment)) / sum((1 - validation$Y_ij) * (1 - validation$treatment))
+    p_0_0 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * (1 - validation$T_ij)) / sum((1 - validation$Y_ij) * (1 - validation$T_ij))
     
-    p_1_0 <- sum(validation$Y_ij_star * validation$Y_ij * (1 - validation$treatment)) / sum(validation$Y_ij * (1 - validation$treatment))
+    p_1_0 <- sum(validation$Y_ij_star * validation$Y_ij * (1 - validation$T_ij)) / sum(validation$Y_ij * (1 - validation$T_ij))
   }
   
   realistic_data <- cbind(data, p_0_1, p_1_1, p_0_0, p_1_0)
   
   # Calculating the actual SSW ATE
   
-  E_1 <- sum(((realistic_data$treatment * realistic_data$Y_ij_star) - (pi_hat * realistic_data$p_0_1)
+  E_1 <- sum(((realistic_data$T_ij * realistic_data$Y_ij_star) - (pi_hat * realistic_data$p_0_1)
   ) / (pi_hat * (
     realistic_data$p_1_1 - realistic_data$p_0_1
   ))) / nrow(realistic_data)
-  E_0 <- sum((((1 - realistic_data$treatment) * realistic_data$Y_ij_star
+  E_0 <- sum((((1 - realistic_data$T_ij) * realistic_data$Y_ij_star
   ) - ((1 - pi_hat) * realistic_data$p_0_0)) / ((1 - pi_hat) * (
     realistic_data$p_1_0 - realistic_data$p_0_0))) / nrow(realistic_data)
   return(E_1 - E_0)
@@ -135,8 +136,10 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
       V_ij_0 <- rbern(length(V_ij_0_pi), V_ij_0_pi)
       V_ij_1_pi <- inv.logit((-0.5) + (c(-0.5, -0.5, 0.25, -0.25) %*% cluster_level_data) + (0.15 * Y_ij_1)  + b_iv)  # Bernoulli parameter for calculating V_ij(1)
       V_ij_1 <- rbern(length(V_ij_1_pi), V_ij_1_pi)
-      # Finally, We randomly assign our treatment
-      treatment <- rbern(1)
+      # Finally, We randomly assign our treatment (READ: this is the biggest difference between the first file and this one
+      # assume IID for now, even if this logically doesn't make sense in a cluster based setting)
+      T_ij_pi <- inv.logit(0.25 + (c(0.15, 0.25, -0.1, 0.1) %*% cluster_level_data))
+      T_ij <- rbern(length(T_ij_pi), T_ij_pi)
       cluster_num <- j
       cluster_level_data <- rbind(
         cluster_level_data,
@@ -146,7 +149,7 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
         Y_ij_star_1,
         V_ij_0,
         V_ij_1,
-        treatment,
+        T_ij,
         cluster_num
       )
       data[[j]] <- t(cluster_level_data)
@@ -158,16 +161,16 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
     ## Creating the realistic data set, accounting for the potential outcomes and missingness of gold standard
     realistic_data <- true_data |>
       mutate(
-        V_ij_0 = if_else(treatment == 0, V_ij_0, NA),
-        V_ij_1 = if_else(treatment == 1, V_ij_1, NA),
-        Y_ij_star_0 = if_else(treatment == 0, Y_ij_star_0, NA),
-        Y_ij_star_1 = if_else(treatment == 1, Y_ij_star_1, NA),
+        V_ij_0 = if_else(T_ij == 0, V_ij_0, NA),
+        V_ij_1 = if_else(T_ij == 1, V_ij_1, NA),
+        Y_ij_star_0 = if_else(T_ij == 0, Y_ij_star_0, NA),
+        Y_ij_star_1 = if_else(T_ij == 1, Y_ij_star_1, NA),
         Y_ij_star = coalesce(Y_ij_star_0, Y_ij_star_1),
         Y_ij_0 = if_else(V_ij_0 == 1, Y_ij_0, NA),
         Y_ij_1 = if_else(V_ij_1 == 1, Y_ij_1, NA),
         Y_ij = coalesce(Y_ij_0, Y_ij_1)
       )
-
+    
     ATE_est[i] <- calculate_ATE(realistic_data, parametric)
     CI_boot <- boot_ATE(realistic_data, parametric)
     # CI_boot returns c(Lower, Upper) bootstrapped confidence intervals
@@ -183,35 +186,3 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
               seed = .Random.seed))
 }
 
-
-# Running the factorial model to evaluate the ATE bias
-
-small <- c(100, 300)
-large <- c(500, 1000)
-ICC_vals <- c(0.01, 0.1)
-size_range <- list(small, large)
-
-parameters <- expand.grid(
-  size_idx = 1:2,
-  para = 0:1,
-  ICC = ICC_vals,
-  ind = 0:1,
-  stringsAsFactors = FALSE
-)
-
-## Setting up Parallel coding
-RNGkind("L'Ecuyer-CMRG")
-set.seed(999)
-n_jobs <- nrow(parameters)
-seeds <- replicate(n_jobs, .Random.seed, simplify = FALSE)
-
-system.time(results <- mclapply(seq_len(n_jobs), function(i){
-  param <- parameters[i, ]
-  ATE_sim_one(size_range[[param$size_idx]], param$para, param$ICC, param$ind)
-}, mc.cores = 50)
-)
-
-# Evaluating results
-
-results <- do.call(rbind, lapply(results, as.data.frame))
-write.csv(results, file = "MC-Random-Results.csv")
