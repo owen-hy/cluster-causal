@@ -8,7 +8,7 @@ library(extraDistr)
 library(geepack)
 library(parallel)
 
-num_iter <- 100 # Dane used 5000, just doing 100 until I learn how to parallel code
+num_iter <- 500 # Dane used 5000, just doing 100 until I learn how to parallel code
 num_clusters <- 30
 
 calculate_ATE <- function(data, parametric){
@@ -76,7 +76,7 @@ calculate_ATE <- function(data, parametric){
 }
 
 boot_ATE <- function(data, parametric){
-  sample_ATE <- replicate(100, {
+  sample_ATE <- replicate(200, {
     # Should this be by individual or by clusters? Seemingly Clusters
     sample_idx <- sample(1:length(unique(data$cluster_num)), size = 30 ,replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
@@ -179,8 +179,7 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
               bias_se = sqrt(var(ATE_est) / num_iter),
               cov_se = sqrt((mean(coverage) * (1 - mean(coverage))) / num_iter),
               size = if_else(cluster_range[1] == 100, "small", "large"),
-              parametric = parametric, ICC = ICC, independent = independent,
-              seed = .Random.seed))
+              parametric = parametric, ICC = ICC, independent = independent))
 }
 
 
@@ -203,9 +202,8 @@ parameters <- expand.grid(
 RNGkind("L'Ecuyer-CMRG")
 set.seed(999)
 n_jobs <- nrow(parameters)
-seeds <- replicate(n_jobs, .Random.seed, simplify = FALSE)
 
-system.time(results <- mclapply(seq_len(n_jobs), function(i){
+system.time(results <- mclapply(1:n_jobs, function(i){
   param <- parameters[i, ]
   ATE_sim_one(size_range[[param$size_idx]], param$para, param$ICC, param$ind)
 }, mc.cores = 50)

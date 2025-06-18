@@ -26,8 +26,7 @@ calculate_ATE <- function(data, parametric){
   
   if (parametric) {
     expit <- glm(
-      Y_ij_star ~ (treatment * Y_ij) + (treatment * x1) + (treatment * x2) + (treatment *
-                                                                                x3) + (x4),
+      Y_ij_star ~ (T_ij * Y_ij) + (T_ij * x1) + (T_ij * x2) + (T_ij *x3) + (x4),
       data = validation,
       family = "binomial"
     )
@@ -35,22 +34,22 @@ calculate_ATE <- function(data, parametric){
     ## Fitting P(0, 1, X_ij)
     temp <- data |>
       dplyr::select(x1, x2, x3, x4, cluster_num) |>
-      mutate(Y_ij = 0, treatment = 1)
+      mutate(Y_ij = 0, T_ij = 1)
     p_0_1 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(1, 1, X_ij)
     temp <- data |>
       dplyr::select(x1, x2, x3, x4, cluster_num) |>
-      mutate(Y_ij = 1, treatment = 1)
+      mutate(Y_ij = 1, T_ij = 1)
     p_1_1 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(0, 0, X_ij)
     temp <- data |>
       dplyr::select(x1, x2, x3, x4, cluster_num) |>
-      mutate(Y_ij = 0, treatment = 0)
+      mutate(Y_ij = 0, T_ij = 0)
     p_0_0 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(1, 0, X_ij)
     temp <- data |>
       dplyr::select(x1, x2, x3, x4, cluster_num) |>
-      mutate(Y_ij = 1, treatment = 0)
+      mutate(Y_ij = 1, T_ij = 0)
     p_1_0 <- predict(expit, newdata = temp, type = 'response')
   } else{
     p_0_1 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * validation$T_ij) / sum((1 - validation$Y_ij) * validation$T_ij)
@@ -138,7 +137,7 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
       V_ij_1 <- rbern(length(V_ij_1_pi), V_ij_1_pi)
       # Finally, We randomly assign our treatment (READ: this is the biggest difference between the first file and this one
       # assume IID for now, even if this logically doesn't make sense in a cluster based setting)
-      T_ij_pi <- inv.logit(0.25 + (c(0.15, 0.25, -0.1, 0.1) %*% cluster_level_data))
+      T_ij_pi <- inv.logit(0.5 + (c(0.15, 0.25, -0.1, 0.1) %*% cluster_level_data))
       T_ij <- rbern(length(T_ij_pi), T_ij_pi)
       cluster_num <- j
       cluster_level_data <- rbind(
