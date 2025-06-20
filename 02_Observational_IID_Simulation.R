@@ -1,20 +1,22 @@
-# File Purpose: This R script is designed to replicate the result of Dane's estimator in a simulation study
-# This is done under the ideal situation where all clusters are randomized (Thus no propensity model is needed)
+# File Purpose: This R script is designed to account for an observational setting
+# Specifically, we are now dealing with a scenario where {Y_ij(0), Y_ij(1)} _|_ T_ij | X_ij
 
 library(tidyverse)
 library(MASS)
 library(boot)
 library(extraDistr)
-library(geepack)
 library(parallel)
 
 num_iter <- 250
-num_clusters <- 30
+num_clusters <- 5
 
-calculate_ATE <- function(data, parametric){
+calculate_ATE_prop <- function(data, parametric){
   validation <- data |>
     filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
-  pi_hat <- mean(data$treatment)
+  # Fitting a propensity score
+  ## Model assumes perfectly IID observations
+    pi_hat_model <- glm(T_ij ~ x1 + x2 + x3 + x4, data = data, family = "binomial")
+    pi_hat <- predict(pi_hat_model, newdata = data, type = 'response')
   
   # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
   
@@ -23,10 +25,8 @@ calculate_ATE <- function(data, parametric){
     dplyr::select(-starts_with("p"))
   
   if (parametric) {
-    # Fitting logistic model
     expit <- glm(
-      Y_ij_star ~ (treatment * Y_ij) + (treatment * x1) + (treatment * x2) + (treatment *
-                                                                                x3) + (x4),
+      Y_ij_star ~ (T_ij * Y_ij) + (T_ij * x1) + (T_ij * x2) + (T_ij *x3) + (x4),
       data = validation,
       family = "binomial"
     )
@@ -34,42 +34,42 @@ calculate_ATE <- function(data, parametric){
     ## Fitting P(0, 1, X_ij)
     temp <- data |>
       dplyr::select(x1, x2, x3, x4, cluster_num) |>
-      mutate(Y_ij = 0, treatment = 1)
+      mutate(Y_ij = 0, T_ij = 1)
     p_0_1 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(1, 1, X_ij)
     temp <- data |>
       dplyr::select(x1, x2, x3, x4, cluster_num) |>
-      mutate(Y_ij = 1, treatment = 1)
+      mutate(Y_ij = 1, T_ij = 1)
     p_1_1 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(0, 0, X_ij)
     temp <- data |>
       dplyr::select(x1, x2, x3, x4, cluster_num) |>
-      mutate(Y_ij = 0, treatment = 0)
+      mutate(Y_ij = 0, T_ij = 0)
     p_0_0 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(1, 0, X_ij)
     temp <- data |>
       dplyr::select(x1, x2, x3, x4, cluster_num) |>
-      mutate(Y_ij = 1, treatment = 0)
+      mutate(Y_ij = 1, T_ij = 0)
     p_1_0 <- predict(expit, newdata = temp, type = 'response')
   } else{
-    p_0_1 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * validation$treatment) / sum((1 - validation$Y_ij) * validation$treatment)
+    p_0_1 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * validation$T_ij) / sum((1 - validation$Y_ij) * validation$T_ij)
     
-    p_1_1 <- sum(validation$Y_ij_star * validation$Y_ij * validation$treatment) / sum(validation$Y_ij * validation$treatment)
+    p_1_1 <- sum(validation$Y_ij_star * validation$Y_ij * validation$T_ij) / sum(validation$Y_ij * validation$T_ij)
     
-    p_0_0 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * (1 - validation$treatment)) / sum((1 - validation$Y_ij) * (1 - validation$treatment))
+    p_0_0 <- sum(validation$Y_ij_star * (1 - validation$Y_ij) * (1 - validation$T_ij)) / sum((1 - validation$Y_ij) * (1 - validation$T_ij))
     
-    p_1_0 <- sum(validation$Y_ij_star * validation$Y_ij * (1 - validation$treatment)) / sum(validation$Y_ij * (1 - validation$treatment))
+    p_1_0 <- sum(validation$Y_ij_star * validation$Y_ij * (1 - validation$T_ij)) / sum(validation$Y_ij * (1 - validation$T_ij))
   }
   
   realistic_data <- cbind(data, p_0_1, p_1_1, p_0_0, p_1_0)
   
   # Calculating the actual SSW ATE
   
-  E_1 <- sum(((realistic_data$treatment * realistic_data$Y_ij_star) - (pi_hat * realistic_data$p_0_1)
+  E_1 <- sum(((realistic_data$T_ij * realistic_data$Y_ij_star) - (pi_hat * realistic_data$p_0_1)
   ) / (pi_hat * (
     realistic_data$p_1_1 - realistic_data$p_0_1
   ))) / nrow(realistic_data)
-  E_0 <- sum((((1 - realistic_data$treatment) * realistic_data$Y_ij_star
+  E_0 <- sum((((1 - realistic_data$T_ij) * realistic_data$Y_ij_star
   ) - ((1 - pi_hat) * realistic_data$p_0_0)) / ((1 - pi_hat) * (
     realistic_data$p_1_0 - realistic_data$p_0_0))) / nrow(realistic_data)
   return(E_1 - E_0)
@@ -84,12 +84,12 @@ boot_ATE <- function(data, parametric){
         mutate(cluster_num = idx)
     })
     boot_data <- data.table::rbindlist(boot_data)
-    calculate_ATE(boot_data, parametric)
+    calculate_ATE_prop(boot_data, parametric)
   })
   return(c(quantile(sample_ATE, probs = 0.025, na.rm = T), quantile(sample_ATE, probs = 0.975, na.rm = T)))
 }
 
-ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
+ATE_sim_one_obs <- function(cluster_range, parametric, ICC, independent){
   ATE <- rep(NA, num_iter)
   ATE_est <- rep(NA, num_iter)
   coverage <- rep(NA, num_iter)
@@ -135,8 +135,10 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
       V_ij_0 <- rbern(length(V_ij_0_pi), V_ij_0_pi)
       V_ij_1_pi <- inv.logit((-0.5) + (c(-0.5, -0.5, 0.25, -0.25) %*% cluster_level_data) + (0.15 * Y_ij_1)  + b_iv)  # Bernoulli parameter for calculating V_ij(1)
       V_ij_1 <- rbern(length(V_ij_1_pi), V_ij_1_pi)
-      # Finally, We randomly assign our treatment
-      treatment <- rbern(1)
+      # Finally, We randomly assign our treatment (READ: this is the biggest difference between the first file and this one
+      # assume IID for now, even if this logically doesn't make sense in a cluster based setting)
+      T_ij_pi <- inv.logit(0.5 + (c(0.15, 0.25, -0.1, 0.1) %*% cluster_level_data)) 
+      T_ij <- rbern(length(T_ij_pi), T_ij_pi)
       cluster_num <- j
       cluster_level_data <- rbind(
         cluster_level_data,
@@ -146,7 +148,7 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
         Y_ij_star_1,
         V_ij_0,
         V_ij_1,
-        treatment,
+        T_ij,
         cluster_num
       )
       data[[j]] <- t(cluster_level_data)
@@ -158,17 +160,17 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
     ## Creating the realistic data set, accounting for the potential outcomes and missingness of gold standard
     realistic_data <- true_data |>
       mutate(
-        V_ij_0 = if_else(treatment == 0, V_ij_0, NA),
-        V_ij_1 = if_else(treatment == 1, V_ij_1, NA),
-        Y_ij_star_0 = if_else(treatment == 0, Y_ij_star_0, NA),
-        Y_ij_star_1 = if_else(treatment == 1, Y_ij_star_1, NA),
+        V_ij_0 = if_else(T_ij == 0, V_ij_0, NA),
+        V_ij_1 = if_else(T_ij == 1, V_ij_1, NA),
+        Y_ij_star_0 = if_else(T_ij == 0, Y_ij_star_0, NA),
+        Y_ij_star_1 = if_else(T_ij == 1, Y_ij_star_1, NA),
         Y_ij_star = coalesce(Y_ij_star_0, Y_ij_star_1),
         Y_ij_0 = if_else(V_ij_0 == 1, Y_ij_0, NA),
         Y_ij_1 = if_else(V_ij_1 == 1, Y_ij_1, NA),
         Y_ij = coalesce(Y_ij_0, Y_ij_1)
       )
-
-    ATE_est[i] <- calculate_ATE(realistic_data, parametric)
+    
+    ATE_est[i] <- calculate_ATE_prop(realistic_data, parametric)
     CI_boot <- boot_ATE(realistic_data, parametric)
     # CI_boot returns c(Lower, Upper) bootstrapped confidence intervals
     coverage[i] <- CI_boot[1] < ATE[i] & ATE[i] < CI_boot[2]
@@ -182,8 +184,7 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
               parametric = parametric, ICC = ICC, independent = independent))
 }
 
-
-# Running the factorial model to evaluate the ATE bias
+# Monte Carlo simulation per model
 
 small <- c(100, 300)
 large <- c(500, 1000)
@@ -205,11 +206,13 @@ n_jobs <- nrow(parameters)
 
 system.time(results <- mclapply(1:n_jobs, function(i){
   param <- parameters[i, ]
-  ATE_sim_one(size_range[[param$size_idx]], param$para, param$ICC, param$ind)
+  ATE_sim_one_obs(size_range[[param$size_idx]], param$para, param$ICC, param$ind)
 }, mc.cores = 50)
 )
 
 # Evaluating results
 
 results <- do.call(rbind, lapply(results, as.data.frame))
-write.csv(results, file = "MC-Random-Results.csv")
+write.csv(results, file = "MC-Observed-Results.csv")
+
+

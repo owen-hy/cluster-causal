@@ -1,22 +1,24 @@
 # File Purpose: This R script is designed to account for an observational setting
 # Specifically, we are now dealing with a scenario where {Y_ij(0), Y_ij(1)} _|_ T_ij | X_ij
+# Here we also assume that treatment is assigned at the cluster level
 
 library(tidyverse)
 library(MASS)
 library(boot)
 library(extraDistr)
+library(lme4)
 library(parallel)
 
-num_iter <- 500 # Dane used 5000, just doing 100 until I learn how to parallel code
+num_iter <- 30
 num_clusters <- 30
 
-calculate_ATE <- function(data, parametric){
+calculate_ATE_prop <- function(data, parametric, clustered){
   validation <- data |>
     filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
-  
   # Fitting a propensity score
-  pi_hat_model <- glm(T_ij ~ x1 + x2 + x3 + x4, data = data, family = "binomial")
-  pi_hat <- predict(pi_hat_model, newdata = data, type = 'response')
+  # OY: TODO
+  propensity_ind <- 
+  pi_hat 
   
   # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
   
@@ -75,7 +77,7 @@ calculate_ATE <- function(data, parametric){
   return(E_1 - E_0)
 }
 
-boot_ATE <- function(data, parametric){
+boot_ATE <- function(data, parametric, clustered){
   sample_ATE <- replicate(100, {
     # Should this be by individual or by clusters? Seemingly Clusters
     sample_idx <- sample(1:length(unique(data$cluster_num)), size = 30 ,replace = T)
@@ -84,12 +86,12 @@ boot_ATE <- function(data, parametric){
         mutate(cluster_num = idx)
     })
     boot_data <- data.table::rbindlist(boot_data)
-    calculate_ATE(boot_data, parametric)
+    calculate_ATE_prop(boot_data, parametric, clustered)
   })
   return(c(quantile(sample_ATE, probs = 0.025), quantile(sample_ATE, probs = 0.975)))
 }
 
-ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
+ATE_sim_one_obs <- function(cluster_range, parametric, ICC, independent, clustered){
   ATE <- rep(NA, num_iter)
   ATE_est <- rep(NA, num_iter)
   coverage <- rep(NA, num_iter)
@@ -135,13 +137,15 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
       V_ij_0 <- rbern(length(V_ij_0_pi), V_ij_0_pi)
       V_ij_1_pi <- inv.logit((-0.5) + (c(-0.5, -0.5, 0.25, -0.25) %*% cluster_level_data) + (0.15 * Y_ij_1)  + b_iv)  # Bernoulli parameter for calculating V_ij(1)
       V_ij_1 <- rbern(length(V_ij_1_pi), V_ij_1_pi)
-      # Finally, We randomly assign our treatment (READ: this is the biggest difference between the first file and this one
-      # assume IID for now, even if this logically doesn't make sense in a cluster based setting)
-      T_ij_pi <- inv.logit(0.5 + (c(0.15, 0.25, -0.1, 0.1) %*% cluster_level_data))
-      T_ij <- rbern(length(T_ij_pi), T_ij_pi)
+      # Finally, We randomly assign our treatment 
+      # OY: TODO
+      x5 <- rbinom(1, 1, 0.5)# Adding one more cluster level covariate
+      T_ij_pi <- inv.logit((-0.1 * x4) + (0.25 * x5))
+      T_ij <- rbinom(1, 1, T_ij_pi)
       cluster_num <- j
       cluster_level_data <- rbind(
         cluster_level_data,
+        x5,
         Y_ij_0,
         Y_ij_1,
         Y_ij_star_0,
@@ -170,8 +174,8 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
         Y_ij = coalesce(Y_ij_0, Y_ij_1)
       )
     
-    ATE_est[i] <- calculate_ATE(realistic_data, parametric)
-    CI_boot <- boot_ATE(realistic_data, parametric)
+    ATE_est[i] <- calculate_ATE_prop(realistic_data, parametric, clustered)
+    CI_boot <- boot_ATE(realistic_data, parametric, clustered)
     # CI_boot returns c(Lower, Upper) bootstrapped confidence intervals
     coverage[i] <- CI_boot[1] < ATE[i] & ATE[i] < CI_boot[2]
   }
@@ -181,7 +185,7 @@ ATE_sim_one <- function(cluster_range, parametric, ICC, independent){
               bias_se = sqrt(var(ATE_est) / num_iter),
               cov_se = sqrt((mean(coverage) * (1 - mean(coverage))) / num_iter),
               size = if_else(cluster_range[1] == 100, "small", "large"),
-              parametric = parametric, ICC = ICC, independent = independent,
-              seed = .Random.seed))
+              parametric = parametric, ICC = ICC, independent = independent))
 }
+
 
