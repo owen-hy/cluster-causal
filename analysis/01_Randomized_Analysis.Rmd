@@ -1,0 +1,41 @@
+---
+title: "01_Randomized_Analysis"
+output: html_document
+---
+
+```{r load-library}
+# File Purpose: To analyze the results obtained from the Monte Carlo simulation conducted in 01_Randomized_Cluster_Simulation.R
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(here)
+options(scipen = 999)
+MC_Random_Results<- read_csv(here::here("cluster-computed-csv", "MC-Random-Results.csv"))
+```
+
+# Computing confidence intervals of Monte Carlo estimates
+
+```{r}
+MC_Random_Results <- MC_Random_Results |>
+  mutate(bias = ATE_est - ATE,
+         bias_low = bias - (1.96 * bias_se),
+         bias_high = bias + (1.96 * bias_se),
+         cov_low = coverage - (1.96 * cov_se),
+         cov_high = coverage + (1.96 * cov_se)) |> 
+  arrange(desc(independent), ICC, desc(size), desc(parametric)) |>
+  dplyr::select(-`...1`)
+```
+
+# Table of computed results
+
+```{r echo=F}
+MC_Random_Results |>
+  dplyr::select(ATE, bias, variance, coverage, bias_low, bias_high, cov_low, cov_high) |>
+  kable() |>
+  add_header_above(c(" " = 8)) |>
+  add_header_above(c("Monte Carlo Results" = 4, "95% CI" = 4)) |>
+  kable_styling()
+```
+
+
+

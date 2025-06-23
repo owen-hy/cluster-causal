@@ -8,7 +8,7 @@ library(extraDistr)
 library(parallel)
 
 num_iter <- 250
-num_clusters <- 5
+num_clusters <- 30
 
 calculate_ATE_prop <- function(data, parametric){
   validation <- data |>

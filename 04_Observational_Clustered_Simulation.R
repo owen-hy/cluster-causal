@@ -6,7 +6,7 @@ library(tidyverse)
 library(MASS)
 library(boot)
 library(extraDistr)
-library(lme4)
+library(nnet)
 library(parallel)
 
 num_iter <- 30
@@ -17,7 +17,7 @@ calculate_ATE_prop <- function(data, parametric, clustered){
     filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
   # Fitting a propensity score
   # OY: TODO
-  propensity_ind <- 
+  propensity_ind <- multinom(cluster_num ~ x1 + x2 + x3, data = data)
   pi_hat 
   
   # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
@@ -153,7 +153,7 @@ ATE_sim_one_obs <- function(cluster_range, parametric, ICC, independent, cluster
         V_ij_0,
         V_ij_1,
         T_ij,
-        cluster_num
+        as.factor(cluster_num)
       )
       data[[j]] <- t(cluster_level_data)
     }
