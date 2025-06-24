@@ -17,8 +17,8 @@ calculate_ATE_prop <- function(data, parametric, clustered){
     filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
   # Fitting a propensity score
   # OY: TODO
-  propensity_ind <- multinom(cluster_num ~ x1 + x2 + x3, data = data)
-  pi_hat 
+  propensity_model <- glm(T_ij ~ x1 + x2 + x3 + x4 + x5, data = data)
+  pi_hat <- predict(propensity_model, data, type = "response")
   
   # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
   
@@ -139,7 +139,7 @@ ATE_sim_one_obs <- function(cluster_range, parametric, ICC, independent, cluster
       V_ij_1 <- rbern(length(V_ij_1_pi), V_ij_1_pi)
       # Finally, We randomly assign our treatment 
       # OY: TODO
-      x5 <- rbinom(1, 1, 0.5)# Adding one more cluster level covariate
+      x5 <- rbinom(1, 1, 0.5) # Adding one more cluster level covariate
       T_ij_pi <- inv.logit((-0.1 * x4) + (0.25 * x5))
       T_ij <- rbinom(1, 1, T_ij_pi)
       cluster_num <- j
