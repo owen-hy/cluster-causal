@@ -1,23 +1,23 @@
 # File Purpose: This R script is designed to account for an observational setting
 # Specifically, we are now dealing with a scenario where {Y_ij(0), Y_ij(1)} _|_ T_ij | X_ij
-# Here we also assume that treatment is assigned at the cluster level
+# Here we will assume that there is a random effect model for the cluster, but is still assigned randomly
 
 library(tidyverse)
 library(MASS)
 library(boot)
 library(extraDistr)
 library(nnet)
+library(lme4)
 library(parallel)
 
-num_iter <- 30
+num_iter <- 500
 num_clusters <- 30
 
-calculate_ATE_prop <- function(data, parametric, clustered){
+calculate_ATE_prop <- function(data, parametric){
   validation <- data |>
     filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
   # Fitting a propensity score
-  # OY: TODO
-  propensity_model <- glm(T_ij ~ x1 + x2 + x3 + x4 + x5, data = data)
+  propensity_model <- glmer(T_ij ~ x1 + x2 + x3 + x4 + (1 | cluster_num), data = data, family = "binomial")
   pi_hat <- predict(propensity_model, data, type = "response")
   
   # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
@@ -28,7 +28,7 @@ calculate_ATE_prop <- function(data, parametric, clustered){
   
   if (parametric) {
     expit <- glm(
-      Y_ij_star ~ (T_ij * Y_ij) + (T_ij * x1) + (T_ij * x2) + (T_ij *x3) + (x4),
+      Y_ij_star ~ (T_ij * Y_ij) + x1 + x2 + x3 + x4,
       data = validation,
       family = "binomial"
     )
@@ -77,8 +77,8 @@ calculate_ATE_prop <- function(data, parametric, clustered){
   return(E_1 - E_0)
 }
 
-boot_ATE <- function(data, parametric, clustered){
-  sample_ATE <- replicate(100, {
+boot_ATE <- function(data, parametric){
+  sample_ATE <- replicate(150, {
     # Should this be by individual or by clusters? Seemingly Clusters
     sample_idx <- sample(1:length(unique(data$cluster_num)), size = 30 ,replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
@@ -86,12 +86,12 @@ boot_ATE <- function(data, parametric, clustered){
         mutate(cluster_num = idx)
     })
     boot_data <- data.table::rbindlist(boot_data)
-    calculate_ATE_prop(boot_data, parametric, clustered)
+    calculate_ATE_prop(boot_data, parametric)
   })
   return(c(quantile(sample_ATE, probs = 0.025), quantile(sample_ATE, probs = 0.975)))
 }
 
-ATE_sim_one_obs <- function(cluster_range, parametric, ICC, independent, clustered){
+ATE_sim_one_obs <- function(cluster_range, parametric, ICC, independent){
   ATE <- rep(NA, num_iter)
   ATE_est <- rep(NA, num_iter)
   coverage <- rep(NA, num_iter)
@@ -138,14 +138,12 @@ ATE_sim_one_obs <- function(cluster_range, parametric, ICC, independent, cluster
       V_ij_1_pi <- inv.logit((-0.5) + (c(-0.5, -0.5, 0.25, -0.25) %*% cluster_level_data) + (0.15 * Y_ij_1)  + b_iv)  # Bernoulli parameter for calculating V_ij(1)
       V_ij_1 <- rbern(length(V_ij_1_pi), V_ij_1_pi)
       # Finally, We randomly assign our treatment 
-      # OY: TODO
-      x5 <- rbinom(1, 1, 0.5) # Adding one more cluster level covariate
-      T_ij_pi <- inv.logit((-0.1 * x4) + (0.25 * x5))
-      T_ij <- rbinom(1, 1, T_ij_pi)
+      b_tij <- rnorm(1, 0, sqrt((ICC * (pi^2)) / (3 * (1 - ICC))))
+      T_ij_pi <- inv.logit(0.5 + (c(0.1, -0.15, -0.1, 0.2) %*% cluster_level_data) + b_tij)
+      T_ij <- rbern(length(T_ij_pi), T_ij_pi)
       cluster_num <- j
-      cluster_level_data <- rbind(
+      cluster_data <- rbind(
         cluster_level_data,
-        x5,
         Y_ij_0,
         Y_ij_1,
         Y_ij_star_0,
@@ -153,9 +151,9 @@ ATE_sim_one_obs <- function(cluster_range, parametric, ICC, independent, cluster
         V_ij_0,
         V_ij_1,
         T_ij,
-        as.factor(cluster_num)
+        cluster_num
       )
-      data[[j]] <- t(cluster_level_data)
+      data[[j]] <- t(cluster_data)
     }
     true_data <- do.call(rbind, lapply(data, as.data.frame))
     # Calculating the true value of the ATE
@@ -174,8 +172,8 @@ ATE_sim_one_obs <- function(cluster_range, parametric, ICC, independent, cluster
         Y_ij = coalesce(Y_ij_0, Y_ij_1)
       )
     
-    ATE_est[i] <- calculate_ATE_prop(realistic_data, parametric, clustered)
-    CI_boot <- boot_ATE(realistic_data, parametric, clustered)
+    ATE_est[i] <- calculate_ATE_prop(realistic_data, parametric)
+    CI_boot <- boot_ATE(realistic_data, parametric)
     # CI_boot returns c(Lower, Upper) bootstrapped confidence intervals
     coverage[i] <- CI_boot[1] < ATE[i] & ATE[i] < CI_boot[2]
   }
@@ -188,4 +186,31 @@ ATE_sim_one_obs <- function(cluster_range, parametric, ICC, independent, cluster
               parametric = parametric, ICC = ICC, independent = independent))
 }
 
+small <- c(100, 300)
+large <- c(500, 1000)
+ICC_vals <- c(0.01, 0.1)
+size_range <- list(small, large)
 
+parameters <- expand.grid(
+  size_idx = 1:2,
+  para = c(F, T),
+  ICC = ICC_vals,
+  ind = c(F, T),
+  stringsAsFactors = FALSE
+)
+
+## Setting up Parallel coding
+RNGkind("L'Ecuyer-CMRG")
+set.seed(999)
+n_jobs <- nrow(parameters)
+
+system.time(results <- mclapply(1:n_jobs, function(i){
+  param <- parameters[i, ]
+  ATE_sim_one_obs(size_range[[param$size_idx]], param$para, param$ICC, param$ind)
+}, mc.cores = 50)
+)
+
+# Evaluating results
+
+results <- do.call(rbind, lapply(results, as.data.frame))
+write.csv(results, file = "MC-Clustered-Results.csv")

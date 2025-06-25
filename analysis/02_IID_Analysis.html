@@ -601,11 +601,11 @@ library(kableExtra)</code></pre>
 <pre class="r"><code>options(scipen = 999)
 MC_Observed_Results&lt;- read_csv(here::here(&quot;cluster-computed-csv&quot;, &quot;MC-Observed-Results.csv&quot;))</code></pre>
 <pre><code>## New names:
-## Rows: 16 Columns: 11
+## Rows: 8 Columns: 10
 ## ── Column specification
 ## ──────────────────────────────────────────────────────── Delimiter: &quot;,&quot; chr
-## (1): size dbl (8): ...1, ATE, ATE_est, variance, coverage, bias_se, cov_se, ICC
-## lgl (2): parametric, independent
+## (1): size dbl (7): ...1, ATE, ATE_est, variance, coverage, bias_se, cov_se lgl
+## (2): parametric, independent
 ## ℹ Use `spec()` to retrieve the full column specification for this data. ℹ
 ## Specify the column types or set `show_col_types = FALSE` to quiet this message.
 ## • `` -&gt; `...1`</code></pre>
@@ -617,7 +617,7 @@ MC_Observed_Results&lt;- read_csv(here::here(&quot;cluster-computed-csv&quot;, &
          bias_high = bias + (1.96 * bias_se),
          cov_low = coverage - (1.96 * cov_se),
          cov_high = coverage + (1.96 * cov_se)) |&gt; 
-  arrange(desc(independent), ICC, desc(size), desc(parametric)) |&gt;
+  arrange(desc(independent), desc(size), desc(parametric)) |&gt;
   dplyr::select(-`...1`)</code></pre>
 </div>
 <div id="table-of-computed-results" class="section level1">
@@ -673,100 +673,48 @@ cov_high
 <tbody>
 <tr>
 <td style="text-align:right;">
-0.1760990
+0.1764188
 </td>
 <td style="text-align:right;">
--0.0051947
+-0.0000062
 </td>
 <td style="text-align:right;">
-0.0043053
+0.0039142
 </td>
 <td style="text-align:right;">
-0.928
+0.930
 </td>
 <td style="text-align:right;">
--0.0109460
+-0.0054901
 </td>
 <td style="text-align:right;">
-0.0005567
+0.0054777
 </td>
 <td style="text-align:right;">
-0.9053425
+0.9076354
 </td>
 <td style="text-align:right;">
-0.9506575
-</td>
-</tr>
-<tr>
-<td style="text-align:right;">
-0.1762969
-</td>
-<td style="text-align:right;">
--0.0015228
-</td>
-<td style="text-align:right;">
-0.0029156
-</td>
-<td style="text-align:right;">
-0.940
-</td>
-<td style="text-align:right;">
--0.0062557
-</td>
-<td style="text-align:right;">
-0.0032102
-</td>
-<td style="text-align:right;">
-0.9191834
-</td>
-<td style="text-align:right;">
-0.9608166
+0.9523646
 </td>
 </tr>
 <tr>
 <td style="text-align:right;">
-0.1761245
+0.1764152
 </td>
 <td style="text-align:right;">
-0.0004187
+0.0007914
 </td>
 <td style="text-align:right;">
-0.0009698
-</td>
-<td style="text-align:right;">
-0.944
-</td>
-<td style="text-align:right;">
--0.0023110
-</td>
-<td style="text-align:right;">
-0.0031484
-</td>
-<td style="text-align:right;">
-0.9238465
-</td>
-<td style="text-align:right;">
-0.9641535
-</td>
-</tr>
-<tr>
-<td style="text-align:right;">
-0.1760565
-</td>
-<td style="text-align:right;">
-0.0015349
-</td>
-<td style="text-align:right;">
-0.0007735
+0.0032287
 </td>
 <td style="text-align:right;">
 0.946
 </td>
 <td style="text-align:right;">
--0.0009029
+-0.0041892
 </td>
 <td style="text-align:right;">
-0.0039728
+0.0057720
 </td>
 <td style="text-align:right;">
 0.9261887
@@ -777,115 +725,62 @@ cov_high
 </tr>
 <tr>
 <td style="text-align:right;">
-0.1653161
+0.1767126
 </td>
 <td style="text-align:right;">
--0.0011898
+0.0029883
 </td>
 <td style="text-align:right;">
-0.0038127
+0.0007594
 </td>
 <td style="text-align:right;">
-0.936
+0.958
 </td>
 <td style="text-align:right;">
--0.0066022
+0.0005728
 </td>
 <td style="text-align:right;">
-0.0042226
+0.0054037
 </td>
 <td style="text-align:right;">
-0.9145465
+0.9404176
 </td>
 <td style="text-align:right;">
-0.9574535
-</td>
-</tr>
-<tr>
-<td style="text-align:right;">
-0.1648664
-</td>
-<td style="text-align:right;">
--0.0010943
-</td>
-<td style="text-align:right;">
-0.0030802
-</td>
-<td style="text-align:right;">
-0.944
-</td>
-<td style="text-align:right;">
--0.0059590
-</td>
-<td style="text-align:right;">
-0.0037704
-</td>
-<td style="text-align:right;">
-0.9238465
-</td>
-<td style="text-align:right;">
-0.9641535
+0.9755824
 </td>
 </tr>
 <tr>
 <td style="text-align:right;">
-0.1649698
+0.1768298
 </td>
 <td style="text-align:right;">
--0.0032936
+-0.0021570
 </td>
 <td style="text-align:right;">
-0.0010143
+0.0008087
 </td>
 <td style="text-align:right;">
-0.918
+0.942
 </td>
 <td style="text-align:right;">
--0.0060852
+-0.0046496
 </td>
 <td style="text-align:right;">
--0.0005020
+0.0003357
 </td>
 <td style="text-align:right;">
-0.8939509
+0.9215115
 </td>
 <td style="text-align:right;">
-0.9420491
-</td>
-</tr>
-<tr>
-<td style="text-align:right;">
-0.1649428
-</td>
-<td style="text-align:right;">
--0.0006868
-</td>
-<td style="text-align:right;">
-0.0007927
-</td>
-<td style="text-align:right;">
-0.928
-</td>
-<td style="text-align:right;">
--0.0031547
-</td>
-<td style="text-align:right;">
-0.0017810
-</td>
-<td style="text-align:right;">
-0.9053425
-</td>
-<td style="text-align:right;">
-0.9506575
+0.9624885
 </td>
 </tr>
 </tbody>
 </table>
 </div>
-</div>
-<div id="classification-dependent-on-covariates-order-is-the-same-as-paper" class="section level1">
-<h1>Classification Dependent on Covariates (Order is the Same as
-Paper)</h1>
+<div id="classification-dependent-on-covariates-order-is-the-same-as-paper" class="section level3">
+<h3>Classification Dependent on Covariates (Order is the Same as
+Paper)</h3>
 <table class="table" style="color: black; margin-left: auto; margin-right: auto;">
 <thead>
 <tr>
@@ -934,214 +829,111 @@ cov_high
 <tbody>
 <tr>
 <td style="text-align:right;">
-0.1761811
+0.1758326
 </td>
 <td style="text-align:right;">
--0.0076147
+-0.0833882
 </td>
 <td style="text-align:right;">
-0.0056512
+0.0053257
 </td>
 <td style="text-align:right;">
-0.916
+0.772
 </td>
 <td style="text-align:right;">
--0.0142041
+-0.0897850
 </td>
 <td style="text-align:right;">
--0.0010254
+-0.0769915
 </td>
 <td style="text-align:right;">
-0.8916859
+0.7352255
 </td>
 <td style="text-align:right;">
-0.9403141
-</td>
-</tr>
-<tr>
-<td style="text-align:right;">
-0.1758842
-</td>
-<td style="text-align:right;">
--0.0608443
-</td>
-<td style="text-align:right;">
-0.0039693
-</td>
-<td style="text-align:right;">
-0.798
-</td>
-<td style="text-align:right;">
--0.0663666
-</td>
-<td style="text-align:right;">
--0.0553219
-</td>
-<td style="text-align:right;">
-0.7628077
-</td>
-<td style="text-align:right;">
-0.8331923
+0.8087745
 </td>
 </tr>
 <tr>
 <td style="text-align:right;">
-0.1763860
+0.1767109
 </td>
 <td style="text-align:right;">
--0.0023605
+-0.0340596
 </td>
 <td style="text-align:right;">
-0.0012924
+0.0041638
 </td>
 <td style="text-align:right;">
-0.926
+0.908
 </td>
 <td style="text-align:right;">
--0.0055117
+-0.0397157
 </td>
 <td style="text-align:right;">
-0.0007906
+-0.0284035
 </td>
 <td style="text-align:right;">
-0.9030548
+0.8826658
 </td>
 <td style="text-align:right;">
-0.9489452
-</td>
-</tr>
-<tr>
-<td style="text-align:right;">
-0.1761072
-</td>
-<td style="text-align:right;">
--0.0558650
-</td>
-<td style="text-align:right;">
-0.0010818
-</td>
-<td style="text-align:right;">
-0.526
-</td>
-<td style="text-align:right;">
--0.0587479
-</td>
-<td style="text-align:right;">
--0.0529820
-</td>
-<td style="text-align:right;">
-0.4822324
-</td>
-<td style="text-align:right;">
-0.5697676
+0.9333342
 </td>
 </tr>
 <tr>
 <td style="text-align:right;">
-0.1645411
+0.1770064
 </td>
 <td style="text-align:right;">
--0.0072184
+-0.0781453
 </td>
 <td style="text-align:right;">
-0.0050238
+0.0012773
 </td>
 <td style="text-align:right;">
-0.932
+0.340
 </td>
 <td style="text-align:right;">
--0.0134312
+-0.0812781
 </td>
 <td style="text-align:right;">
--0.0010056
+-0.0750126
 </td>
 <td style="text-align:right;">
-0.9099335
+0.2984776
 </td>
 <td style="text-align:right;">
-0.9540665
-</td>
-</tr>
-<tr>
-<td style="text-align:right;">
-0.1650483
-</td>
-<td style="text-align:right;">
--0.0551312
-</td>
-<td style="text-align:right;">
-0.0041331
-</td>
-<td style="text-align:right;">
-0.804
-</td>
-<td style="text-align:right;">
--0.0607664
-</td>
-<td style="text-align:right;">
--0.0494960
-</td>
-<td style="text-align:right;">
-0.7692042
-</td>
-<td style="text-align:right;">
-0.8387958
+0.3815224
 </td>
 </tr>
 <tr>
 <td style="text-align:right;">
-0.1649326
+0.1767503
 </td>
 <td style="text-align:right;">
--0.0005434
+-0.0301365
 </td>
 <td style="text-align:right;">
-0.0011188
+0.0009633
 </td>
 <td style="text-align:right;">
-0.940
+0.818
 </td>
 <td style="text-align:right;">
--0.0034753
+-0.0328570
 </td>
 <td style="text-align:right;">
-0.0023886
+-0.0274160
 </td>
 <td style="text-align:right;">
-0.9191834
+0.7841792
 </td>
 <td style="text-align:right;">
-0.9608166
-</td>
-</tr>
-<tr>
-<td style="text-align:right;">
-0.1647626
-</td>
-<td style="text-align:right;">
--0.0529328
-</td>
-<td style="text-align:right;">
-0.0009354
-</td>
-<td style="text-align:right;">
-0.544
-</td>
-<td style="text-align:right;">
--0.0556136
-</td>
-<td style="text-align:right;">
--0.0502519
-</td>
-<td style="text-align:right;">
-0.5003431
-</td>
-<td style="text-align:right;">
-0.5876569
+0.8518208
 </td>
 </tr>
 </tbody>
 </table>
+</div>
 </div>
 
 
