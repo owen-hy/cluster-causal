@@ -9,14 +9,15 @@ library(extraDistr)
 library(parallel)
 
 num_iter <- 500
+num_clusters <- 30
 
 calculate_ATE_prop <- function(data, parametric){
   validation <- data |>
     filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
   # Fitting a propensity score
   ## Model assumes perfectly IID observations
-    pi_hat_model <- glm(T_ij ~ x1 + x2 + x3 + x4, data = data, family = "binomial")
-    pi_hat <- predict(pi_hat_model, newdata = data, type = 'response')
+  pi_hat_model <- glm(T_ij ~ x1 + x2 + x3 + x4, data = data, family = "binomial")
+  pi_hat <- predict(pi_hat_model, newdata = data, type = 'response')
   
   # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
   
@@ -26,29 +27,29 @@ calculate_ATE_prop <- function(data, parametric){
   
   if (parametric) {
     expit <- glm(
-      Y_ij_star ~ (T_ij * (Y_ij + x1 + x2 + x3 + x4)),
+      Y_ij_star ~ (T_ij * Y_ij) + (T_ij * x1) + (T_ij * x2) + (T_ij *x3) +  x4,
       data = validation,
       family = "binomial"
     )
     
     ## Fitting P(0, 1, X_ij)
     temp <- data |>
-      dplyr::select(x1, x2, x3, x4) |>
+      dplyr::select(x1, x2, x3, x4, cluster_num) |>
       mutate(Y_ij = 0, T_ij = 1)
     p_0_1 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(1, 1, X_ij)
     temp <- data |>
-      dplyr::select(x1, x2, x3, x4) |>
+      dplyr::select(x1, x2, x3, x4, cluster_num) |>
       mutate(Y_ij = 1, T_ij = 1)
     p_1_1 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(0, 0, X_ij)
     temp <- data |>
-      dplyr::select(x1, x2, x3, x4) |>
+      dplyr::select(x1, x2, x3, x4, cluster_num) |>
       mutate(Y_ij = 0, T_ij = 0)
     p_0_0 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(1, 0, X_ij)
     temp <- data |>
-      dplyr::select(x1, x2, x3, x4) |>
+      dplyr::select(x1, x2, x3, x4, cluster_num) |>
       mutate(Y_ij = 1, T_ij = 0)
     p_1_0 <- predict(expit, newdata = temp, type = 'response')
   } else{
@@ -77,62 +78,69 @@ calculate_ATE_prop <- function(data, parametric){
 
 boot_ATE <- function(data, parametric){
   sample_ATE <- replicate(200, {
-    sample_idx <- sample(1:nrow(data), size = nrow(data), replace = T)
+    sample_idx <- sample(1:nrow(data), size = nrow(data) ,replace = T)
     boot_data <- data[sample_idx, ]
     calculate_ATE_prop(boot_data, parametric)
   })
   return(c(quantile(sample_ATE, probs = 0.025, na.rm = T), quantile(sample_ATE, probs = 0.975, na.rm = T)))
 }
 
-ATE_sim_one_obs <- function(range, parametric,independent){
+ATE_sim_one_obs <- function(cluster_range, parametric,independent){
   ATE <- rep(NA, num_iter)
   ATE_est <- rep(NA, num_iter)
   coverage <- rep(NA, num_iter)
   for(i in 1:num_iter) {
-    # Generating our covariate matrix X_i
-    size <- rdunif(1, range[1], range[2])
-    x1 <- rnorm(size, mean = 1, sd = 1)
-    x2 <- rnorm(size, mean = 0.5, sd = 1)
-    x3 <- rbinom(size, 1, 0.55)
-    x4 <- runif(size)
-    covariates <- rbind(x1, x2, x3, x4) #X_i
-    # Generating our observed outcome, Y_ij, Y*_ij, and V_ij
-    # Starting with Y_ij(0) and Y_ij(1)
-    Y_ij_0_pi <- inv.logit((-1) + (c(0.15, 0.2, 0.15, -0.15) %*% covariates)) # Bernoulli parameter for calculating Y_ij(0)
-    Y_ij_0 <- rbern(length(Y_ij_0_pi), Y_ij_0_pi)
-    Y_ij_1_pi <- inv.logit((-0.25) + (c(0.15, 0.2, 0.15, -0.15) %*% covariates)) # Bernoulli parameter for calculating Y_ij(1)
-    Y_ij_1 <- rbern(length(Y_ij_1_pi), Y_ij_1_pi)
-    # Now moving onto Y*_ij(0) and Y*_ij(1)
-    if(independent){
-      Y_ij_0_star_pi <-  inv.logit(-1.25 + (1.5 * Y_ij_0))# Bernoulli parameter for calculating Y*_ij(0)
-      Y_ij_star_0 <- rbern(length(Y_ij_0_star_pi), Y_ij_0_star_pi)
-      Y_ij_1_star_pi <-  inv.logit(-1 + (2.5 * Y_ij_1)) # Bernoulli parameter for calculating Y*_ij(1)
-      Y_ij_star_1 <- rbern(length(Y_ij_1_star_pi), Y_ij_1_star_pi)
-    } else{
-      Y_ij_0_star_pi <-  inv.logit(-1.75 + (c(0.25, -0.25, -0.15, -0.1) %*% covariates) + (1.5 * Y_ij_0))# Bernoulli parameter for calculating Y*_ij(0)
-      Y_ij_star_0 <- rbern(length(Y_ij_0_star_pi), Y_ij_0_star_pi)
-      Y_ij_1_star_pi <-  inv.logit(-1.25 + (c(-0.25, -0.15, -0.25, -0.1) %*% covariates) + (2.5 * Y_ij_1)) # Bernoulli parameter for calculating Y*_ij(1)
-      Y_ij_star_1 <- rbern(length(Y_ij_1_star_pi), Y_ij_1_star_pi)
-    }
-    # Now, we calculate V_ij
-    V_ij_0_pi <- inv.logit((-0.25) + (c(-0.5, -0.5, 0.25, -0.25) %*% covariates) + (-0.15 * Y_ij_0)) # Bernoulli parameter for calculating V_ij(0)
-    V_ij_0 <- rbern(length(V_ij_0_pi), V_ij_0_pi)
-    V_ij_1_pi <- inv.logit((-0.5) + (c(-0.5, -0.5, 0.25, -0.25) %*% covariates) + (0.15 * Y_ij_1))  # Bernoulli parameter for calculating V_ij(1)
-    V_ij_1 <- rbern(length(V_ij_1_pi), V_ij_1_pi)
-    # Finally, We randomly assign our treatment where in an observational setting, T_i is a function of covariates
-    T_ij_pi <- inv.logit(0.05 + (c(0.15, 0.25, -0.275, 0.1) %*% covariates)) 
-    T_ij <- rbern(length(T_ij_pi), T_ij_pi)
-    all_data <- rbind(
-        covariates,
+    data <- list()
+    for (j in 1:num_clusters) {
+      # Generating our covariate matrix X_i per cluster
+      cluster_size <- rdunif(1, cluster_range[1], cluster_range[2])
+      x1 <- rnorm(cluster_size, mean = 1, sd = 1)
+      x2 <- rnorm(cluster_size, mean = 0.5, sd = 1)
+      x3 <- rbinom(cluster_size, 1, 0.55)
+      x4 <- runif(cluster_size)
+      cluster_level_data <- rbind(x1, x2, x3, x4) #X_i
+      # Generating our observed outcome, Y_ij, Y*_ij, and V_ij
+      # Starting with Y_ij(0) and Y_ij(1)
+      Y_ij_0_pi <- inv.logit((-1) + (c(0.15, 0.2, 0.15, -0.15) %*% cluster_level_data)) # Bernoulli parameter for calculating Y_ij(0)
+      Y_ij_0 <- rbern(length(Y_ij_0_pi), Y_ij_0_pi)
+      Y_ij_1_pi <- inv.logit((-0.25) + (c(0.15, 0.2, 0.15, -0.15) %*% cluster_level_data)) # Bernoulli parameter for calculating Y_ij(1)
+      Y_ij_1 <- rbern(length(Y_ij_1_pi), Y_ij_1_pi)
+      # Now moving onto Y*_ij(0) and Y*_ij(1)
+      if(independent){
+        Y_ij_0_star_pi <-  inv.logit(-1.25 + (1.5 * Y_ij_0))# Bernoulli parameter for calculating Y*_ij(0)
+        Y_ij_star_0 <- rbern(length(Y_ij_0_star_pi), Y_ij_0_star_pi)
+        Y_ij_1_star_pi <-  inv.logit(-1 + (2.5 * Y_ij_1)) # Bernoulli parameter for calculating Y*_ij(1)
+        Y_ij_star_1 <- rbern(length(Y_ij_1_star_pi), Y_ij_1_star_pi)
+      } else{
+        Y_ij_0_star_pi <-  inv.logit(-1.75 + (c(0.25, -0.25, -0.15, -0.1) %*% cluster_level_data) + (1.5 * Y_ij_0))# Bernoulli parameter for calculating Y*_ij(0)
+        Y_ij_star_0 <- rbern(length(Y_ij_0_star_pi), Y_ij_0_star_pi)
+        Y_ij_1_star_pi <-  inv.logit(-1.25 + (c(-0.25, -0.15, -0.25, -0.1) %*% cluster_level_data) + (2.5 * Y_ij_1)) # Bernoulli parameter for calculating Y*_ij(1)
+        Y_ij_star_1 <- rbern(length(Y_ij_1_star_pi), Y_ij_1_star_pi)
+      }
+      # Now, we calculate V_ij
+      V_ij_0_pi <- inv.logit((-0.25) + (c(-0.5, -0.5, 0.25, -0.25) %*% cluster_level_data) + (-0.15 * Y_ij_0)) # Bernoulli parameter for calculating V_ij(0)
+      V_ij_0 <- rbern(length(V_ij_0_pi), V_ij_0_pi)
+      V_ij_1_pi <- inv.logit((-0.5) + (c(-0.5, -0.5, 0.25, -0.25) %*% cluster_level_data) + (0.15 * Y_ij_1))  # Bernoulli parameter for calculating V_ij(1)
+      V_ij_1 <- rbern(length(V_ij_1_pi), V_ij_1_pi)
+      # Finally, We randomly assign our treatment (READ: this is the biggest difference between the first file and this one
+      # assume IID for now, even if this logically doesn't make sense in a cluster based setting)
+      T_ij_pi <- inv.logit(0.5 + (c(0.15, 0.25, -0.1, 0.1) %*% cluster_level_data)) 
+      T_ij <- rbern(length(T_ij_pi), T_ij_pi)
+      cluster_num <- j
+      cluster_level_data <- rbind(
+        cluster_level_data,
         Y_ij_0,
         Y_ij_1,
         Y_ij_star_0,
         Y_ij_star_1,
         V_ij_0,
         V_ij_1,
-        T_ij
+        T_ij,
+        cluster_num
       )
-    true_data <- as.data.frame(t(all_data))
+      data[[j]] <- t(cluster_level_data)
+    }
+    true_data <- do.call(rbind, lapply(data, as.data.frame))
     # Calculating the true value of the ATE
     ATE[i] <- mean(true_data$Y_ij_1) - mean(true_data$Y_ij_0)
     # Estimating the SSW ATE
@@ -159,9 +167,8 @@ ATE_sim_one_obs <- function(range, parametric,independent){
               coverage = mean(coverage),
               bias_se = sqrt(var(ATE_est) / num_iter),
               cov_se = sqrt((mean(coverage) * (1 - mean(coverage))) / num_iter),
-              size = if_else(range[1] == 100, "small", "large"),
+              size = if_else(cluster_range[1] == 100, "small", "large"),
               parametric = parametric, independent = independent))
-  
 }
 
 # Monte Carlo simulation per model
@@ -192,5 +199,4 @@ system.time(results <- mclapply(1:n_jobs, function(i){
 
 results <- do.call(rbind, lapply(results, as.data.frame))
 write.csv(results, file = "MC-Observed-Results.csv")
-
 
