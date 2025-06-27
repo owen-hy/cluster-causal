@@ -34,22 +34,22 @@ calculate_ATE_prop <- function(data, parametric){
     
     ## Fitting P(0, 1, X_ij)
     temp <- data |>
-      dplyr::select(x1, x2, x3, x4, cluster_num) |>
+      dplyr::select(x1, x2, x3, x4) |>
       mutate(Y_ij = 0, T_ij = 1)
     p_0_1 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(1, 1, X_ij)
     temp <- data |>
-      dplyr::select(x1, x2, x3, x4, cluster_num) |>
+      dplyr::select(x1, x2, x3, x4) |>
       mutate(Y_ij = 1, T_ij = 1)
     p_1_1 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(0, 0, X_ij)
     temp <- data |>
-      dplyr::select(x1, x2, x3, x4, cluster_num) |>
+      dplyr::select(x1, x2, x3, x4) |>
       mutate(Y_ij = 0, T_ij = 0)
     p_0_0 <- predict(expit, newdata = temp, type = 'response')
     ## Fitting P(1, 0, X_ij)
     temp <- data |>
-      dplyr::select(x1, x2, x3, x4, cluster_num) |>
+      dplyr::select(x1, x2, x3, x4) |>
       mutate(Y_ij = 1, T_ij = 0)
     p_1_0 <- predict(expit, newdata = temp, type = 'response')
   } else{
@@ -126,7 +126,6 @@ ATE_sim_one_obs <- function(cluster_range, parametric,independent){
       # assume IID for now, even if this logically doesn't make sense in a cluster based setting)
       T_ij_pi <- inv.logit(0.5 + (c(0.15, 0.25, -0.1, 0.1) %*% cluster_level_data)) 
       T_ij <- rbern(length(T_ij_pi), T_ij_pi)
-      cluster_num <- j
       cluster_level_data <- rbind(
         cluster_level_data,
         Y_ij_0,
@@ -135,8 +134,7 @@ ATE_sim_one_obs <- function(cluster_range, parametric,independent){
         Y_ij_star_1,
         V_ij_0,
         V_ij_1,
-        T_ij,
-        cluster_num
+        T_ij
       )
       data[[j]] <- t(cluster_level_data)
     }
