@@ -3,6 +3,7 @@ library(MASS)
 library(boot)
 library(extraDistr)
 library(parallel)
+library(grf)
 
 ################### FUNCTIONS #######################
 
@@ -68,24 +69,34 @@ calculate_ATE_prop <- function(data, parametric, pi_hat){
 }
 
 boot_ATE <- function(data, parametric){
-  sample_ATE <- replicate(150, {
+  sample_ATE <- replicate(200, {
     # Should this be by individual or by clusters? Seemingly Clusters
-    sample_idx <- sample(1:length(unique(data$cluster_num)), size = 30 ,replace = T)
+    sample_idx <- sample(1:length(unique(data$cluster_assign)), size = 30, replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
-      data[data$cluster_num == sample_idx[idx], ] |>
-        mutate(cluster_num = idx)
+      data[data$cluster_assign == sample_idx[idx], ] |>
+        mutate(cluster_assign = idx)
     })
     boot_data <- data.table::rbindlist(boot_data)
-    calculate_ATE_prop(boot_data, parametric)
+    agg <- boot_data |>
+      group_by(cluster_assign) |>
+      summarize(h1 = mean(x1),
+              h2 = mean(x2),
+              h3 = mean(x3),
+              w1 = mean(w1),
+              w2 = mean(w2),
+              treatment = mean(T_ij))
+    propensity <- probability_forest(X = agg[, c("w1", "w2", "h1", "h2", "h3")], Y = as.factor(agg$treatment))
+    pi_hat <- predict(propensity, agg[, !colnames(agg) %in% c("treatment", "cluster_assign")], type = "response")$predictions[, 2]
+    calculate_ATE_prop(boot_data, parametric, pi_hat[boot_data$cluster_assign])
   })
   return(c(quantile(sample_ATE, probs = 0.025), quantile(sample_ATE, probs = 0.975)))
 }
 
 ############################################
 
-n <- 10000 # Number of People
-num_cluster <- 30 # Number of Clusters
-num_iter <- 100
+n <- 100000 # Number of People
+num_cluster <- 100 # Number of Clusters
+num_iter <- 150
 ICC <- 0.01
 parametric <- T
 independent <- F
@@ -159,6 +170,8 @@ for(i in 1:num_iter){
   # Combining everything 
   true_data <- as.data.frame(cbind(
     X_ij,
+    w1 = w1[cluster_assign],
+    w2 = w2[cluster_assign],
     Y_ij_0, Y_ij_1,
     Y_ij_star_0, Y_ij_star_1,
     V_ij_0, V_ij_1,
@@ -178,15 +191,21 @@ for(i in 1:num_iter){
       Y_ij = coalesce(Y_ij_0, Y_ij_1)
     )
   
+  W_i <- cbind(W_i, T_ij)
+  
   # Calculating Propensity Scores
 
-  propensity_cluster <- glm(T_ij ~ w1 + w2, data = W_i, family = "binomial")
-  propensity_agg <- glm(T_ij ~ w1 + w2 + h1 + h2 + h3, data = W_i, family = "binomial")
-  pi_hat_cluster <- predict(propensity_cluster, W_i, type = "response")
-  pi_hat_agg <- predict(propensity_agg, W_i, type = "response")
+  propensity_cluster <- probability_forest(X = W_i[, c("w1", "w2")], Y = as.factor(W_i$T_ij))
+  propensity_agg <- probability_forest(X = W_i[, c("w1", "w2", "h1", "h2", "h3")], Y = as.factor(W_i$T_ij))
+  pi_hat_cluster <- predict(propensity_cluster, W_i[, !colnames(W_i) %in% c("T_ij", "h1", "h2", "h3")], type = "response")$predictions[, 2]
+  pi_hat_agg <- predict(propensity_agg, W_i[, !colnames(W_i) %in% c("T_ij")], type = "response")$predictions[, 2]
   
   # Calculations!
   ATE[i] <- mean(true_data$Y_ij_1 - true_data$Y_ij_0)
   ATE_cluster[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat_cluster[cluster_assign])
   ATE_agg[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat_agg[cluster_assign])
+  
+  # Coverage will only be for the aggregate, which we would expect to do better
+  boot <- boot_ATE(realistic_data, parametric)
+  coverage[i] <- boot[1] < ATE[i] & ATE[i] < boot[2]
 }

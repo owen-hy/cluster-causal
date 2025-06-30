@@ -7,7 +7,6 @@ library(MASS)
 library(boot)
 library(extraDistr)
 library(nnet)
-library(lme4)
 library(parallel)
 
 num_iter <- 500
@@ -17,7 +16,7 @@ calculate_ATE_prop <- function(data, parametric){
   validation <- data |>
     filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
   # Fitting a propensity score
-  propensity_model <- glmer(T_ij ~ x1 + x2 + x3 + x4 + (1 | cluster_num), data = data, family = "binomial")
+  propensity_model <- glm(T_ij ~ x1 + x2 + x3 + x4, data = data, family = "binomial")
   pi_hat <- predict(propensity_model, data, type = "response")
   
   # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
@@ -78,7 +77,7 @@ calculate_ATE_prop <- function(data, parametric){
 }
 
 boot_ATE <- function(data, parametric){
-  sample_ATE <- replicate(150, {
+  sample_ATE <- replicate(200, {
     # Should this be by individual or by clusters? Seemingly Clusters
     sample_idx <- sample(1:length(unique(data$cluster_num)), size = 30 ,replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
