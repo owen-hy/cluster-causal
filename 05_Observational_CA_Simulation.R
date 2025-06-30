@@ -71,7 +71,7 @@ calculate_ATE_prop <- function(data, parametric, pi_hat){
 boot_ATE <- function(data, parametric){
   sample_ATE <- replicate(200, {
     # Should this be by individual or by clusters? Seemingly Clusters
-    sample_idx <- sample(1:length(unique(data$cluster_assign)), size = 30, replace = T)
+    sample_idx <- sample(1:length(unique(data$cluster_assign)), size = num_cluster, replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
       data[data$cluster_assign == sample_idx[idx], ] |>
         mutate(cluster_assign = idx)
@@ -89,18 +89,16 @@ boot_ATE <- function(data, parametric){
     pi_hat <- predict(propensity, agg[, !colnames(agg) %in% c("treatment", "cluster_assign")], type = "response")$predictions[, 2]
     calculate_ATE_prop(boot_data, parametric, pi_hat[boot_data$cluster_assign])
   })
-  return(c(quantile(sample_ATE, probs = 0.025), quantile(sample_ATE, probs = 0.975)))
+  return(c(quantile(sample_ATE, probs = 0.025, na.rm = T), quantile(sample_ATE, probs = 0.975, na.rm = T)))
 }
 
 ############################################
 
 n <- 100000 # Number of People
 num_cluster <- 100 # Number of Clusters
-num_iter <- 150
-ICC <- 0.01
-parametric <- T
-independent <- F
+num_iter <- 500
 
+ATE_sim_cluster <- function(parametric, ICC, independent){
 
 ATE <- rep(NA, num_iter)
 ATE_cluster <- rep(NA, num_iter)
@@ -119,14 +117,23 @@ for(i in 1:num_iter){
   W_i <- cbind(w1, w2) # Cluster Level
   
   # Assigning clusters based upon probabilities
-  
-  cluster_prob <- list()
-  for(j in 1:num_cluster){
-    cluster_prob[[j]] <- exp((0.2 * (w1[j] + w2[j]) * (1 + x1 + x2 + x3)))
+  # Repeat just in case a cluster has no member
+  repeat {
+    cluster_prob <- list()
+    for (j in 1:num_cluster) {
+      cluster_prob[[j]] <- exp((0.2 * (w1[j] + w2[j]) * (1 + x1 + x2 + x3)))
+    }
+    cluster_prob <- prop.table(do.call(cbind, cluster_prob), margin = 1)
+    
+    # Sample clusters for each individual
+    cluster_assign <- apply(cluster_prob, 1, function(p) sample(seq_along(p), size = 1, prob = p))
+    
+    # Check that no cluster is empty
+    cluster_counts <- table(cluster_assign)
+    if (length(cluster_counts) == num_cluster && all(cluster_counts > 0)) break
+    
+    # Otherwise, repeat this block
   }
-  cluster_prob <- prop.table(do.call(cbind, cluster_prob), margin = 1)
-  cluster_assign <- apply(cluster_prob, 1, function(p) sample(seq_along(p), size = 1, prob = p))
-  
   # Aggregate summary per cluster assignment
   agg <- cbind(as.data.frame(X_ij), cluster_assign) |>
     group_by(cluster_assign) |>
@@ -209,3 +216,38 @@ for(i in 1:num_iter){
   boot <- boot_ATE(realistic_data, parametric)
   coverage[i] <- boot[1] < ATE[i] & ATE[i] < boot[2]
 }
+  
+  return(list(ATE = mean(ATE), ATE_cluster = mean(ATE_cluster), ATE_agg = mean(ATE_agg),
+              variance = var(ATE_agg),
+              coverage = mean(coverage),
+              bias_se = sqrt(var(ATE_agg) / num_iter),
+              cov_se = sqrt((mean(coverage) * (1 - mean(coverage))) / num_iter),
+              parametric = parametric, ICC = ICC, independent = independent))
+}
+
+ICC_vals <- c(0.01, 0.1)
+size_range <- list(small, large)
+
+parameters <- expand.grid(
+  para = c(F, T),
+  ICC = ICC_vals,
+  ind = c(F, T),
+  stringsAsFactors = FALSE
+)
+
+## Setting up Parallel coding
+RNGkind("L'Ecuyer-CMRG")
+set.seed(999)
+n_jobs <- nrow(parameters)
+
+system.time(results <- mclapply(1:n_jobs, function(i){
+  param <- parameters[i, ]
+  ATE_sim_cluster(param$para, param$ICC, param$ind)
+}, mc.cores = 50)
+)
+
+# Evaluating results
+
+results <- do.call(rbind, lapply(results, as.data.frame))
+write.csv(results, file = "MC-CO-Results.csv")
+

@@ -27,7 +27,7 @@ calculate_ATE_prop <- function(data, parametric){
   
   if (parametric) {
     expit <- glm(
-      Y_ij_star ~ (T_ij * Y_ij) + x1 + x2 + x3 + x4,
+      Y_ij_star ~ (T_ij * Y_ij) + (T_ij * x1) + (T_ij * x2) + (T_ij * x3) + x4,
       data = validation,
       family = "binomial"
     )
@@ -79,7 +79,7 @@ calculate_ATE_prop <- function(data, parametric){
 boot_ATE <- function(data, parametric){
   sample_ATE <- replicate(200, {
     # Should this be by individual or by clusters? Seemingly Clusters
-    sample_idx <- sample(1:length(unique(data$cluster_num)), size = 30 ,replace = T)
+    sample_idx <- sample(1:length(unique(data$cluster_num)), size = num_clusters, replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
       data[data$cluster_num == sample_idx[idx], ] |>
         mutate(cluster_num = idx)
