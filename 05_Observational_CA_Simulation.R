@@ -226,7 +226,6 @@ for(i in 1:num_iter){
 }
 
 ICC_vals <- c(0.01, 0.1)
-size_range <- list(small, large)
 
 parameters <- expand.grid(
   para = c(F, T),
