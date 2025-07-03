@@ -1,11 +1,15 @@
 # File Purpose: Our current reporting of values hides a lot of important details about the distribution of what we would achieve, This file is designed 
 # for data viz that would be crucial for presentation, allowing to show these visualizations
 
-set.seed(999)
-
+set.seed(123)
+library(tidyverse)
+library(MASS)
+library(boot)
+library(extraDistr)
+library(parallel)
 num_clusters <- 30
 
-calculate_ATE_prop <- function(data, parametric, pi_hat){
+calculate_ATE_prop <- function(data, pi_hat){
   validation <- data |>
     filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
   
@@ -53,6 +57,12 @@ calculate_ATE_prop <- function(data, parametric, pi_hat){
   E_0 <- sum((((1 - realistic_data$T_ij) * realistic_data$Y_ij_star
   ) - ((1 - pi_hat) * realistic_data$p_0_0)) / ((1 - pi_hat) * (
     realistic_data$p_1_0 - realistic_data$p_0_0))) / nrow(realistic_data)
+  return(E_1 - E_0)
+}
+
+calculate_ATE_SSO <- function(data, pi_hat){
+  E_1 <- mean((data$T_ij * data$Y_ij_star) / pi_hat)
+  E_0 <- mean(((1 - data$T_ij) * data$Y_ij_star) / (1 - pi_hat))
   return(E_1 - E_0)
 }
 
@@ -120,16 +130,37 @@ realistic_data <- true_data |>
 
 ## SSW Estimator
 
-sample_ATE_SSW <- replicate(500, {
+SSW <- cbind(as.numeric(replicate(500, {
     sample_idx <- sample(1:nrow(realistic_data), size = nrow(realistic_data) ,replace = T)
     boot_data <- realistic_data[sample_idx, ]
     propensity <- glm(T_ij ~ x1 + x2 + x3 + x4, data = boot_data, family = "binomial")
     pi_hat <- predict(propensity, boot_data, type = "response")
-    calculate_ATE_prop(boot_data, parametric, pi_hat)
-  })
+    calculate_ATE_prop(boot_data, pi_hat)
+  })), "SSW")
 
-sample_ATE_
+SSO <- cbind(as.numeric(replicate(500, {
+  sample_idx <- sample(1:nrow(realistic_data), size = nrow(realistic_data) ,replace = T)
+  boot_data <- realistic_data[sample_idx, ]
+  propensity <- glm(T_ij ~ x1 + x2 + x3 + x4, data = boot_data, family = "binomial")
+  pi_hat <- predict(propensity, boot_data, type = "response")
+  #Prime difference, calculating based on just the Y*
+  calculate_ATE_SSO(boot_data, pi_hat)
+})), "SSO")
 
+df <- as.data.frame(rbind(SSW, SSO))
+df$ATE <- as.numeric(df$ATE)
+colnames(df) <- c("ATE", "type")
 
+df |>
+  ggplot(aes(x  = type, y = ATE)) +
+  geom_boxplot() +
+  geom_hline(yintercept = ATE_True, linetype = "dashed") +
+  theme_bw() +
+  labs(x = "Estimator Type",
+       y = "Estimated ATE")
 
 #################### IID ##############################
+
+#################### Clustered, Individual ##############################
+
+#################### Clustered, Individual ##############################
