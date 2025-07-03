@@ -77,7 +77,7 @@ calculate_ATE_prop <- function(data, parametric){
 }
 
 boot_ATE <- function(data, parametric){
-  sample_ATE <- replicate(200, {
+  sample_ATE <- replicate(500, {
     sample_idx <- sample(1:nrow(data), size = nrow(data) ,replace = T)
     boot_data <- data[sample_idx, ]
     calculate_ATE_prop(boot_data, parametric)

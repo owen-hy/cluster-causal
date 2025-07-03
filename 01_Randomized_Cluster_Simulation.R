@@ -8,7 +8,7 @@ library(extraDistr)
 library(geepack)
 library(parallel)
 
-num_iter <- 750
+num_iter <- 500
 num_clusters <- 30
 
 calculate_ATE <- function(data, parametric){
@@ -76,7 +76,7 @@ calculate_ATE <- function(data, parametric){
 }
 
 boot_ATE <- function(data, parametric){
-  sample_ATE <- replicate(200, {
+  sample_ATE <- replicate(500, {
     # Should this be by individual or by clusters? Seemingly Clusters
     sample_idx <- sample(1:length(unique(data$cluster_num)), size = 30 ,replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
