@@ -10,7 +10,7 @@ library(knitr)
 library(kableExtra)
 library(here)
 options(scipen = 999)
-MC_Clustered_Results<- read_csv(here::here("cluster-computed-csv", "MC-Random-Results.csv"))
+MC_Clustered_Results<- read_csv(here::here("cluster-computed-csv", "MC-Clustered-Results.csv"))
 ```
 
 # Computing confidence intervals of Monte Carlo estimates
