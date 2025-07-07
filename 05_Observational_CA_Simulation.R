@@ -204,13 +204,22 @@ for(i in 1:num_iter){
 
   propensity_cluster <- probability_forest(X = W_i[, c("w1", "w2")], Y = as.factor(W_i$T_ij))
   propensity_agg <- probability_forest(X = W_i[, c("w1", "w2", "h1", "h2", "h3")], Y = as.factor(W_i$T_ij))
-  pi_hat_cluster <- predict(propensity_cluster, W_i[, !colnames(W_i) %in% c("T_ij", "h1", "h2", "h3")], type = "response")$predictions[, 2]
-  pi_hat_agg <- predict(propensity_agg, W_i[, !colnames(W_i) %in% c("T_ij")], type = "response")$predictions[, 2]
+  
+  ## Readjust Data Matrix to match that of the model
+  mat <- realistic_data |>
+    dplyr::select(w1, w2, x1, x2, x3, T_ij) |>
+    rename("h1" = "x1",
+           "h2" = "x2",
+           "h3" = "x3")
+  
+  # Calculating the scores themselves
+  pi_hat_cluster <- predict(propensity_cluster, W_i[, colnames(W_i) %in% c("w1", "w2")], type = "response")$predictions[, 2]
+  pi_hat_agg <- predict(propensity_agg, mat[, colnames(mat) %in% c("w1", "w2", "h1", "h2", "h3")], type = "response")$predictions[, 2]
   
   # Calculations!
   ATE[i] <- mean(true_data$Y_ij_1 - true_data$Y_ij_0)
   ATE_cluster[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat_cluster[cluster_assign])
-  ATE_agg[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat_agg[cluster_assign])
+  ATE_agg[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat_agg)
   
   # Coverage will only be for the aggregate, which we would expect to do better
   boot <- boot_ATE(realistic_data, parametric)
