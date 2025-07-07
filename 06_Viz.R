@@ -148,19 +148,27 @@ SSO <- cbind(as.numeric(replicate(500, {
 })), "SSO")
 
 df <- as.data.frame(rbind(SSW, SSO))
-df$ATE <- as.numeric(df$ATE)
 colnames(df) <- c("ATE", "type")
+df$ATE <- as.numeric(df$ATE)
 
-df |>
-  ggplot(aes(x  = type, y = ATE)) +
+
+plot_IID <- df |>
+  ggplot(aes(x = type, y = ATE, color = type)) +
   geom_boxplot() +
-  geom_hline(yintercept = ATE_True, linetype = "dashed") +
-  theme_bw() +
-  labs(x = "Estimator Type",
-       y = "Estimated ATE")
+  geom_hline(yintercept = ATE_True, linetype = "dashed", alpha = 0.5) +
+  theme_bw(base_size = 24) +
+  theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+  theme(legend.position = "bottom") +
+  labs(x = NULL,
+       y = "Estimated ATE",
+       color = NULL) 
+
+ggsave("./images/plot_IID.png", plot = plot_IID, width = 12, height = 5, dpi = 300, units = "in")
 
 #################### IID ##############################
 
 #################### Clustered, Individual ##############################
+
 
 #################### Clustered, Individual ##############################
