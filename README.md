@@ -8,8 +8,14 @@ Measurement error in Electronic Health Records (EHR) undermines the data quality
 ## File Description
 
 01_Ranomized_Cluster_Simulation.R: Simulating Dane's original paper's estimator and finding if similar results were achieved
+
 02_Observational_IID_Simulation.R: Extending Dane's estimator for the IID scenario within an observational setting
+
 03_Single_Simulation.R: Code used mainly for debugging purposes
+
 04_Observational_Clustered_Simulation.R: Extending Dane's estimator for the Clustered but individual treatment assignment scenario within an observational setting
+
 05_Observational_CA_Simulation.R: Extending Dane's estimator for the clustered and cluster level treatment assignement within an observational setting
+
 06_Viz.R: Code used for generating boxplots
+
