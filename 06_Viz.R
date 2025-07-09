@@ -6,7 +6,7 @@ library(MASS)
 library(boot)
 library(extraDistr)
 library(parallel)
-set.seed(999)
+set.seed(123)
 
 #################### Universal Parameterers/Functions ##############################
 num_clusters <- 30
@@ -163,7 +163,8 @@ plot_IID <- df |>
        y = "Estimated ATE",
        color = NULL) 
 
-ggsave("./images/plot_IID.png", plot = plot_IID, width = 12, height = 5, dpi = 300, units = "in")
+ggsave("./images/plot_IID_poster.png", plot = plot_IID, width = 12, height = 5, dpi = 300, units = "in")
+ggsave("./images/plot_IID_slide.png", plot = plot_IID, width = 6, height = 4, dpi = 300, units = "in")
 
 
 #################### IID ##############################
@@ -272,6 +273,7 @@ plot_clustered <- df |>
        y = "Estimated ATE",
        color = NULL) 
 
-ggsave("./images/plot_clustered.png", plot = plot_IID, width = 12, height = 5, dpi = 300, units = "in")
+ggsave("./images/plot_clustered_poster.png", plot = plot_clustered, width = 12, height = 5, dpi = 300, units = "in")
+ggsave("./images/plot_clustered_slide.png", plot = plot_clustered, width = 6, height = 4, dpi = 300, units = "in")
 
 #################### Clustered, Individual ##############################
