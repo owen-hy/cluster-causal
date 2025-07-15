@@ -201,7 +201,7 @@ for(i in 1:num_iter){
   
   # Calculations!
   ATE[i] <- mean(true_data$Y_ij_1 - true_data$Y_ij_0)
-  ATE_cluster[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat)
+  ATE_est[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat)
   
   # Coverage will only be for the aggregate, which we would expect to do better
   boot <- boot_ATE(realistic_data, parametric)
