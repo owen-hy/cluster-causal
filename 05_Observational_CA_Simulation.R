@@ -71,23 +71,15 @@ calculate_ATE_prop <- function(data, parametric, pi_hat){
 boot_ATE <- function(data, parametric){
   sample_ATE <- replicate(200, {
     # Should this be by individual or by clusters? Seemingly Clusters
-    sample_idx <- sample(1:length(unique(data$cluster_assign)), size = num_cluster, replace = T)
+    sample_idx <- sample(1:num_cluster, size = num_cluster, replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
       data[data$cluster_assign == sample_idx[idx], ] |>
         mutate(cluster_assign = idx)
     })
     boot_data <- data.table::rbindlist(boot_data)
-    agg <- boot_data |>
-      group_by(cluster_assign) |>
-      summarize(h1 = mean(x1),
-              h2 = mean(x2),
-              h3 = mean(x3),
-              w1 = mean(w1),
-              w2 = mean(w2),
-              treatment = mean(T_ij))
-    propensity <- probability_forest(X = agg[, c("w1", "w2", "h1", "h2", "h3")], Y = as.factor(agg$treatment))
-    pi_hat <- predict(propensity, agg[, !colnames(agg) %in% c("treatment", "cluster_assign")], type = "response")$predictions[, 2]
-    calculate_ATE_prop(boot_data, parametric, pi_hat[boot_data$cluster_assign])
+    propensity <- glm(T_ij ~ w1 + w2 + h1 + h2 + h3 + x1 + x2 + x3, data = boot_data, family = "binomial")
+    pi_hat <- predict(propensity, boot_data, type = "response")
+    calculate_ATE_prop(boot_data, parametric, pi_hat)
   })
   return(c(quantile(sample_ATE, probs = 0.025, na.rm = T), quantile(sample_ATE, probs = 0.975, na.rm = T)))
 }
@@ -101,8 +93,7 @@ num_iter <- 500
 ATE_sim_cluster <- function(parametric, ICC, independent){
 
 ATE <- rep(NA, num_iter)
-ATE_cluster <- rep(NA, num_iter)
-ATE_agg <- rep(NA, num_iter)
+ATE_est <- rep(NA, num_iter)
 coverage <- rep(NA, num_iter)
 
 for(i in 1:num_iter){
@@ -179,6 +170,9 @@ for(i in 1:num_iter){
     X_ij,
     w1 = w1[cluster_assign],
     w2 = w2[cluster_assign],
+    h1 = agg$h1[cluster_assign],
+    h2 = agg$h2[cluster_assign],
+    h3 = agg$h3[cluster_assign],
     Y_ij_0, Y_ij_1,
     Y_ij_star_0, Y_ij_star_1,
     V_ij_0, V_ij_1,
@@ -202,34 +196,22 @@ for(i in 1:num_iter){
   
   # Calculating Propensity Scores
 
-  propensity_cluster <- probability_forest(X = W_i[, c("w1", "w2")], Y = as.factor(W_i$T_ij))
-  propensity_agg <- probability_forest(X = W_i[, c("w1", "w2", "h1", "h2", "h3")], Y = as.factor(W_i$T_ij))
-  
-  ## Readjust Data Matrix to match that of the model
-  mat <- realistic_data |>
-    dplyr::select(w1, w2, x1, x2, x3, T_ij) |>
-    rename("h1" = "x1",
-           "h2" = "x2",
-           "h3" = "x3")
-  
-  # Calculating the scores themselves
-  pi_hat_cluster <- predict(propensity_cluster, W_i[, colnames(W_i) %in% c("w1", "w2")], type = "response")$predictions[, 2]
-  pi_hat_agg <- predict(propensity_agg, mat[, colnames(mat) %in% c("w1", "w2", "h1", "h2", "h3")], type = "response")$predictions[, 2]
+  propensity <- glm(T_ij ~ w1 + w2 + h1 + h2 + h3 + x1 + x2 + x3, data = realistic_data, family = "binomial")
+  pi_hat <- predict(propensity, realistic_data, type = "response")
   
   # Calculations!
   ATE[i] <- mean(true_data$Y_ij_1 - true_data$Y_ij_0)
-  ATE_cluster[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat_cluster[cluster_assign])
-  ATE_agg[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat_agg)
+  ATE_cluster[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat)
   
   # Coverage will only be for the aggregate, which we would expect to do better
   boot <- boot_ATE(realistic_data, parametric)
   coverage[i] <- boot[1] < ATE[i] & ATE[i] < boot[2]
 }
   
-  return(list(ATE = mean(ATE), ATE_cluster = mean(ATE_cluster), ATE_agg = mean(ATE_agg),
-              variance = var(ATE_agg),
+  return(list(ATE = mean(ATE), ATE_est = mean(ATE_est), 
+              variance = var(ATE_est),
               coverage = mean(coverage),
-              bias_se = sqrt(var(ATE_agg) / num_iter),
+              bias_se = sqrt(var(ATE_est) / num_iter),
               cov_se = sqrt((mean(coverage) * (1 - mean(coverage))) / num_iter),
               parametric = parametric, ICC = ICC, independent = independent))
 }
