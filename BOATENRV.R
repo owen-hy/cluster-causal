@@ -7,6 +7,11 @@
 
 # While roxygen2 notations are used here, this file is not explicitly designed for R package release (yet), just for reference
 
+#' Average Treatment Effect (ATE) estimator for binary outcome observational trials with measurement error and non-random validation subset
+#' 
+#' @description
+#' A short description...
+#' 
 #' @param SS Vector of error prone silver standard outcomes 
 #' @param GS Vector of validated gold standard outcomes (Observations without validation should be NA)
 #' @param treatment Vector of binary treatment assignment
@@ -25,14 +30,14 @@
 #' 
 
 BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
-                     propensity_model = c("glm", "glmer", "rf"), classification_model = c("glm", "glmer", "rf"), 
+                     propensity_model = c("glm", "glmer", "rf"), classification_model = c("glm", "glmer"), 
                      non_parametric = FALSE, propensity_formula = NULL, classification_formula = NULL, cluster = NULL) {
   # TODO: ADD ... = NULL 
   # TODO: ADD rm(list = c(...))
   
   # Arguments for Model, matching it correspondingly
   propensity_model <- match.arg(propensity_model, c("glm", "glmer", "rf"))
-  classification_model <- match.arg(classification_model, c("glm", "glmer", "rf"))
+  classification_model <- match.arg(classification_model, c("glm", "glmer"))
   i_p_formula <- T
   if(popensity_model == "glm"){
     prop_model <- glm
@@ -48,7 +53,6 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
     i_p_formula <- F
   }
   
-  i_c_formula <- T
   if(classification_model == "glm"){
     class_model <- glm
   } else if(classification_model == "glmer"){
@@ -58,10 +62,7 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
     } else{
       prop_model <- lme4::glmer 
     }
-  } else{
-    class_model <- grf::probability_forest
-    i_c_formula <- F
-  }
+  } 
   
   # Data Pre-Processing
   
@@ -95,26 +96,56 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
     p_1_0 <- sum(validation$SS * validation$GS * (1 - validation$treatment)) / sum(validation$GS * (1 - validation$treatment))
   } else{
     class_names <- colnames(classification_X)
-    if(i_c_formula){ # This is the glm/glmer scenario, formula can be used
-      
-      # TODO: PLEASE, make sure that we are including treatment, goldstandard, and interactions within this model
-      
-    } else{ # This is the random forest scenario, X and Y must be specified in specific way
-      
-      # TODO: PLEASE, make sure that we are including treatment, goldstandard, and interactions within this model
-      
+    if(is.null(cluster)) {
+      #guarenteed glm scenario
+      c_formula <-  if_else(
+        is.null(classification_formula),
+        as.formula(paste(
+          "SS ~ treatment * ", "(", paste(c("GS", colnames(propensity_X)), collapse = " + "), ")", sep = ""
+        )),
+        as.formula(classification_formula)
+      )
+    } else{
+      c_formula <- if_else(
+        is.null(classification_formula),
+        as.formula(paste(
+          "SS ~ (1 | cluster) + treatment * ",
+          "(",
+          paste(c("GS", colnames(propensity_X)), collapse = " + "),
+          ")",
+          sep = ""
+        )),
+        as.formula(classification_formula)
+      )
     }
+    classification <- class_model(c_formula, data = validation, family = "binomial")
     
-    
+    ## Fitting P(0, 1, X_ij)
+    temp <- df[, colnames(propensity_X)] |>
+      mutate(GS = 0, treatment = 1)
+    p_0_1 <- predict(classification, newdata = temp, type = 'response')
+    ## Fitting P(1, 1, X_ij)
+    temp <- df[, colnames(propensity_X)] |>
+      mutate(GS = 1, treatment = 1)
+    p_1_1 <- predict(classification, newdata = temp, type = 'response')
+    ## Fitting P(0, 0, X_ij)
+    temp <- df[, colnames(propensity_X)] |>
+      mutate(GS = 0, treatment = 0)
+    p_0_0 <- predict(classification, newdata = temp, type = 'response')
+    ## Fitting P(1, 0, X_ij)
+    temp <- df[, colnames(propensity_X)] |>
+      mutate(GS = 1, treatment = 0)
+    p_1_0 <- predict(classification, newdata = temp, type = 'response')
   }
+
   
   # Fitting Propensity Model
   
   if(i_p_formula){ # glm/glmer scenario for propensity score, formula can be used
     if(is.null(cluster)){ #guarenteed glm scenario
-      p_formula <- if_else(is.null(propensity_formula), as.formula(paste("SS ~ ", colnames(propensity_X), collapse = " + ")), as.formula(propensity_formula))
+      p_formula <- if_else(is.null(propensity_formula), as.formula(paste("treatment ~ ", paste(colnames(propensity_X)), collapse = " + ")), as.formula(propensity_formula))
     } else{
-      p_formula <- if_else(is.null(propensity_formula), as.formula(paste("SS ~ (1 | cluster) ", colnames(propensity_X), collapse = " + ")), as.formula(propensity_formula))
+      p_formula <- if_else(is.null(propensity_formula), as.formula(paste("treatment ~ ", paste(c("(1 | cluster)", colnames(propensity_X)), collapse = " + "))), as.formula(propensity_formula))
     }
     propensity <- prop_model(p_formula, data = df, family = "binomial")
     pi_hat <- predict(propensity, df, type = "response")
@@ -134,8 +165,7 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
     
   return(list(ATE = E_1 - E_0),
          Propensity_Formula = p_formula,
-         Classification_Formula = ,
-         )
+         Classification_Formula = c_formula)
   
 }
   
