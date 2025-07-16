@@ -15,7 +15,10 @@
 #' @param propensity_model Function to use for propensity model
 #' @param classification_model Function to use for classification model
 #' @param non_parametric Boolean value for method of calculating silver standard probability (Default: FALSE)
-#'
+#' @param propensity_formula Optional argument for propensity model formula as a string, for more complex predictors such as interactions. Default formula will be Treatment ~ Covariates in propensity_X. Only applicable for propensity_model == "glm" and propensity_model == "glmer"
+#' @param classification_formula Optional argument for classification model formula as a string, for more complex predictors such as interactions. Default formula will be SS ~ treatment * (GS + classification_X). Only applicable for propensity_model == "glm" and propensity_model == "glmer"
+#' @param cluster Vector of cluster assignment. If left empty, IID will be assumed. Cluster is required when model == "glmer" and optional when model == "rf"
+#' 
 #' @examples
 #' 
 #' 
@@ -23,36 +26,46 @@
 
 BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
                      propensity_model = c("glm", "glmer", "rf"), classification_model = c("glm", "glmer", "rf"), 
-                     non_parametric = FALSE) {
+                     non_parametric = FALSE, propensity_formula = NULL, classification_formula = NULL, cluster = NULL) {
   # TODO: ADD ... = NULL 
   # TODO: ADD rm(list = c(...))
   
   # Arguments for Model, matching it correspondingly
   propensity_model <- match.arg(propensity_model, c("glm", "glmer", "rf"))
   classification_model <- match.arg(classification_model, c("glm", "glmer", "rf"))
-  prop_formula <- T
+  i_p_formula <- T
   if(popensity_model == "glm"){
     prop_model <- glm
   } else if(propensity_model == "glmer"){
-    prop_model <- lme4::glmer
+    if(is.null(cluster)){
+      warning("Cluster argument not provided, defaulting to glm")
+      prop_model <- glm
+    } else{
+      prop_model <- lme4::glmer 
+    }
   } else{
     prop_model <- grf::probability_forest
-    prop_formula <- F
+    i_p_formula <- F
   }
   
-  class_formula <- T
+  i_c_formula <- T
   if(classification_model == "glm"){
     class_model <- glm
   } else if(classification_model == "glmer"){
-    class_model <- lme4::glmer
+    if(is.null(cluster)){
+      warning("Cluster argument not provided, defaulting to glm")
+      prop_model <- glm
+    } else{
+      prop_model <- lme4::glmer 
+    }
   } else{
     class_model <- grf::probability_forest
-    class_formula <- F
+    i_c_formula <- F
   }
   
   # Data Pre-Processing
   
-  df <- cbind(SS, GS, treatment, propensity_X)
+  df <- cbind(SS, GS, treatment, propensity_X, cluster)
   
   ## Propensity and Classification X might have overlapping covariates, accounting for that when binding
   
@@ -82,7 +95,7 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
     p_1_0 <- sum(validation$SS * validation$GS * (1 - validation$treatment)) / sum(validation$GS * (1 - validation$treatment))
   } else{
     class_names <- colnames(classification_X)
-    if(class_formula){ # This is the glm/glmer scenario, formula can be used
+    if(i_c_formula){ # This is the glm/glmer scenario, formula can be used
       
       # TODO: PLEASE, make sure that we are including treatment, goldstandard, and interactions within this model
       
@@ -97,10 +110,21 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
   
   # Fitting Propensity Model
   
-  if(prop_formula){ # glm/glmer scenario for propensity score, formula can be used
-    # TODO: fit pi_hat
+  if(i_p_formula){ # glm/glmer scenario for propensity score, formula can be used
+    if(is.null(cluster)){ #guarenteed glm scenario
+      p_formula <- if_else(is.null(propensity_formula), as.formula(paste("SS ~ ", colnames(propensity_X), collapse = " + ")), as.formula(propensity_formula))
+    } else{
+      p_formula <- if_else(is.null(propensity_formula), as.formula(paste("SS ~ (1 | cluster) ", colnames(propensity_X), collapse = " + ")), as.formula(propensity_formula))
+    }
+    propensity <- prop_model(p_formula, data = df, family = "binomial")
+    pi_hat <- predict(propensity, df, type = "response")
   } else{ # Random forest scenario for propensity score, matrix notation
-    # TODO: fit pi_hat
+    if(!is.null(propensity_formula)){
+      warning("Propensity formula is not applicable to random forest model, please specify all covariates (including interactions) in propensity_X")
+    }
+    propensity <- prop_model(X = propensity_X, Y = as.factor(treatment), clusters = cluster)
+    pi_hat <- predict(propensity, cbind(propensity_X, cluster))
+    p_formula <- NULL
   }
   
   # Constructing the estimator itself
@@ -108,7 +132,10 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
     
   E_0 <- sum((((1 - treatment) * SS) - ((1 - pi_hat) * p_0_0)) / ((1 - pi_hat) * (p_1_0 - p_0_0))) / length(SS)
     
-  return(E_1 - E_0)
+  return(list(ATE = E_1 - E_0),
+         Propensity_Formula = p_formula,
+         Classification_Formula = ,
+         )
   
 }
   
