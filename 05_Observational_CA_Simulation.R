@@ -69,7 +69,7 @@ calculate_ATE_prop <- function(data, parametric, pi_hat){
 }
 
 boot_ATE <- function(data, parametric){
-  sample_ATE <- replicate(200, {
+  sample_ATE <- replicate(500, {
     # Should this be by individual or by clusters? Seemingly Clusters
     sample_idx <- sample(1:num_cluster, size = num_cluster, replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
@@ -203,7 +203,6 @@ for(i in 1:num_iter){
   ATE[i] <- mean(true_data$Y_ij_1 - true_data$Y_ij_0)
   ATE_est[i] <- calculate_ATE_prop(realistic_data, parametric, pi_hat)
   
-  # Coverage will only be for the aggregate, which we would expect to do better
   boot <- boot_ATE(realistic_data, parametric)
   coverage[i] <- boot[1] < ATE[i] & ATE[i] < boot[2]
 }
