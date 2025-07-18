@@ -60,9 +60,10 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
   } else if(classification_model == "glmer"){
     if(is.null(cluster)){
       warning("Cluster argument not provided, defaulting to glm")
-      prop_model <- glm
+      class_model <- glm
+      classification_model <- "glm"
     } else{
-      prop_model <- lme4::glmer 
+      class_model <- lme4::glmer 
     }
   } 
   
@@ -100,8 +101,7 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
     p_1_0 <- sum(validation$SS * validation$GS * (1 - validation$treatment)) / sum(validation$GS * (1 - validation$treatment))
   } else{
     class_names <- colnames(classification_X)
-    if(is.null(cluster)) {
-      #guarenteed glm scenario
+    if(classification_model == "glm") {
         if(is.null(classification_formula)){
           c_formula <- as.formula(paste(
             "SS ~ treatment * ", "(", paste(c("GS", colnames(propensity_X)), collapse = " + "), ")", sep = ""
@@ -109,18 +109,18 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
         } else{
           c_formula <- as.formula(classification_formula)
         }
-    } else{
-      if(is.null(classification_formula)){
-        c_formula <- as.formula(paste(
-          "SS ~ (1 | cluster) + treatment * ",
-          "(",
-          paste(c("GS", colnames(propensity_X)), collapse = " + "),
-          ")",
-          sep = ""
-        ))
-      } else{
-       c_formula <- as.formula(classification_formula) 
-      }
+    } else{ # glmer scenario
+        if(is.null(classification_formula)){
+          c_formula <- as.formula(paste(
+            "SS ~ (1 | cluster) + treatment * ",
+            "(",
+            paste(c("GS", colnames(propensity_X)), collapse = " + "),
+            ")",
+            sep = ""
+          ))
+        } else{
+          c_formula <- as.formula(classification_formula) 
+        }
     }
     classification <- class_model(c_formula, data = validation, family = "binomial")
     
@@ -146,7 +146,7 @@ BOATENRV <- function(SS, GS, treatment, propensity_X, classification_X,
   # Fitting Propensity Model
   
   if(i_p_formula){ # glm/glmer scenario for propensity score, formula can be used
-    if(is.null(cluster)){ #guarenteed glm scenario
+    if(propensity_model == "glm"){ 
       if(is.null(propensity_formula)){
         p_formula <- as.formula(paste("treatment ~ ", paste(colnames(propensity_X), collapse = " + ")))
       } else{
