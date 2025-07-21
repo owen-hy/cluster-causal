@@ -1,6 +1,5 @@
 # File Purpose: Our current reporting of values hides a lot of important details about the distribution of what we would achieve, This file is designed 
 # for data viz that would be crucial for presentation, allowing to show these visualizations
-
 library(tidyverse)
 library(MASS)
 library(boot)
@@ -277,4 +276,197 @@ ggsave("./images/plot_clustered_poster.png", plot = plot_clustered, width = 12, 
 ggsave("./images/plot_clustered_slide.png", plot = plot_clustered, width = 6, height = 4, dpi = 300, units = "in")
 
 #################### Clustered, Individual ##############################
+
+#################### Clustered, Cluster Level ##############################
+
+calculate_ATE_prop_CO <- function(data, pi_hat){
+  validation <- data |>
+    filter(!is.na(Y_ij_0) | !is.na(Y_ij_1))
+  
+  # Fitting Probability models, of the form P(Y_ij, T_ij, X_ij)
+  
+  ## Removing previously computed probabilities
+  data <- data |>
+    dplyr::select(-starts_with("p"))
+  
+
+    expit <- glm(
+      Y_ij_star ~ (T_ij * Y_ij) + (T_ij * x1) + (T_ij * x2) + (T_ij * x3),
+      data = validation,
+      family = "binomial"
+    )
+    
+    ## Fitting P(0, 1, X_ij)
+    temp <- data |>
+      dplyr::select(x1, x2, x3) |>
+      mutate(Y_ij = 0, T_ij = 1)
+    p_0_1 <- predict(expit, newdata = temp, type = 'response')
+    ## Fitting P(1, 1, X_ij)
+    temp <- data |>
+      dplyr::select(x1, x2, x3) |>
+      mutate(Y_ij = 1, T_ij = 1)
+    p_1_1 <- predict(expit, newdata = temp, type = 'response')
+    ## Fitting P(0, 0, X_ij)
+    temp <- data |>
+      dplyr::select(x1, x2, x3) |>
+      mutate(Y_ij = 0, T_ij = 0)
+    p_0_0 <- predict(expit, newdata = temp, type = 'response')
+    ## Fitting P(1, 0, X_ij)
+    temp <- data |>
+      dplyr::select(x1, x2, x3) |>
+      mutate(Y_ij = 1, T_ij = 0)
+    p_1_0 <- predict(expit, newdata = temp, type = 'response')
+
+  
+  realistic_data <- cbind(data, p_0_1, p_1_1, p_0_0, p_1_0)
+  
+  # Calculating the actual SSW ATE
+  
+  E_1 <- sum(((realistic_data$T_ij * realistic_data$Y_ij_star) - (pi_hat * realistic_data$p_0_1)
+  ) / (pi_hat * (
+    realistic_data$p_1_1 - realistic_data$p_0_1
+  ))) / nrow(realistic_data)
+  E_0 <- sum((((1 - realistic_data$T_ij) * realistic_data$Y_ij_star
+  ) - ((1 - pi_hat) * realistic_data$p_0_0)) / ((1 - pi_hat) * (
+    realistic_data$p_1_0 - realistic_data$p_0_0))) / nrow(realistic_data)
+  return(E_1 - E_0)
+}
+
+calculate_ATE_SSO_CO <- function(data, pi_hat){
+  
+  E_1 <- mean((data$T_ij * data$Y_ij_star) / pi_hat)
+  E_0 <- mean(((1 - data$T_ij) * data$Y_ij_star) / (1 - pi_hat))
+  return(E_1 - E_0)
+}
+
+n <- 100000 # Number of People
+num_cluster <- 100 # Number of Clusters
+ATE <- rep(NA, num_iter)
+SSW <- rep(NA, num_iter)
+SSO <- rep(NA, num_iter)
+ICC <- 0.01
+
+for(i in 1:num_iter){
+  # Generating individual + cluster level covariates
+  x1 <- rnorm(n)
+  x2 <- runif(n)
+  x3 <- rbinom(n, 1, 0.45)
+  w1 <- runif(num_cluster)
+  w2 <- rbinom(num_cluster, 1, 0.55)
+  
+  X_ij <- cbind(x1, x2, x3) # Individual Level
+  W_i <- cbind(w1, w2) # Cluster Level
+  
+  # Assigning clusters based upon probabilities
+  # Repeat just in case a cluster has no member
+  repeat {
+    cluster_prob <- list()
+    for (j in 1:num_cluster) {
+      cluster_prob[[j]] <- exp((0.2 * (w1[j] + w2[j]) * (1 + x1 + x2 + x3)))
+    }
+    cluster_prob <- prop.table(do.call(cbind, cluster_prob), margin = 1)
+    
+    # Sample clusters for each individual
+    cluster_assign <- apply(cluster_prob, 1, function(p) sample(seq_along(p), size = 1, prob = p))
+    
+    # Check that no cluster is empty
+    cluster_counts <- table(cluster_assign)
+    if (length(cluster_counts) == num_cluster && all(cluster_counts > 0)) break
+    
+    # Otherwise, repeat this block
+  }
+  # Aggregate summary per cluster assignment
+  agg <- cbind(as.data.frame(X_ij), cluster_assign) |>
+    group_by(cluster_assign) |>
+    summarize(h1 = mean(x1),
+              h2 = mean(x2),
+              h3 = mean(x3))
+  
+  W_i <- cbind(W_i, agg) |>
+    dplyr::select(-cluster_assign)
+  
+  # Assigning T_ij, Y(*)_ij, V_ij
+  b <- rnorm(num_cluster, mean = 0, sd = sqrt((ICC * (pi^2)) / (3 * (1 - ICC))))
+  b_ind <- b[cluster_assign]
+  Y_ij_0_pi <- inv.logit((-1) + (c(0.15, 0.2, 0.15) %*% t(X_ij)) + b_ind) # Bernoulli parameter for calculating Y_ij(0)
+  Y_ij_0 <- rbern(length(Y_ij_0_pi), Y_ij_0_pi)
+  Y_ij_1_pi <- inv.logit((-0.25) + (c(0.15, 0.2, 0.15) %*% t(X_ij)) + b_ind) # Bernoulli parameter for calculating Y_ij(1)
+  Y_ij_1 <- rbern(length(Y_ij_1_pi), Y_ij_1_pi)
+  
+    Y_ij_0_star_pi <-  inv.logit(-1.75 + (c(0.25, -0.25, -0.15) %*% t(X_ij)) + (1.5 * Y_ij_0))# Bernoulli parameter for calculating Y*_ij(0)
+    Y_ij_star_0 <- rbern(length(Y_ij_0_star_pi), Y_ij_0_star_pi)
+    Y_ij_1_star_pi <-  inv.logit(-1.25 + (c(-0.25, -0.15, -0.25) %*% t(X_ij)) + (2.5 * Y_ij_1)) # Bernoulli parameter for calculating Y*_ij(1)
+    Y_ij_star_1 <- rbern(length(Y_ij_1_star_pi), Y_ij_1_star_pi)
+
+  b <- rnorm(num_cluster, mean = 0, sd = sqrt((ICC * (pi^2)) / (3 * (1 - ICC))))
+  b_ind <- b[cluster_assign]
+  V_ij_0_pi <- inv.logit((-0.25) + (c(-0.5, -0.5, 0.25) %*% t(X_ij)) + (-0.15 * Y_ij_0)  + b_ind) # Bernoulli parameter for calculating V_ij(0)
+  V_ij_0 <- rbern(length(V_ij_0_pi), V_ij_0_pi)
+  V_ij_1_pi <- inv.logit((-0.5) + (c(-0.5, -0.5, 0.25) %*% t(X_ij)) + (0.15 * Y_ij_1)  + b_ind)  # Bernoulli parameter for calculating V_ij(1)
+  V_ij_1 <- rbern(length(V_ij_1_pi), V_ij_1_pi)
+  
+  T_ij_pi <- inv.logit(c(0.15, 0.2, 0.1, -0.175, 0.125) %*% t(W_i))
+  T_ij <- rbern(length(T_ij_pi), T_ij_pi)
+  
+  # Combining everything 
+  true_data <- as.data.frame(cbind(
+    X_ij,
+    w1 = w1[cluster_assign],
+    w2 = w2[cluster_assign],
+    h1 = agg$h1[cluster_assign],
+    h2 = agg$h2[cluster_assign],
+    h3 = agg$h3[cluster_assign],
+    Y_ij_0, Y_ij_1,
+    Y_ij_star_0, Y_ij_star_1,
+    V_ij_0, V_ij_1,
+    T_ij = T_ij[cluster_assign],
+    cluster_assign
+  ))
+  
+  realistic_data <- true_data |>
+    mutate(
+      V_ij_0 = if_else(T_ij == 0, V_ij_0, NA),
+      V_ij_1 = if_else(T_ij == 1, V_ij_1, NA),
+      Y_ij_star_0 = if_else(T_ij == 0, Y_ij_star_0, NA),
+      Y_ij_star_1 = if_else(T_ij == 1, Y_ij_star_1, NA),
+      Y_ij_star = coalesce(Y_ij_star_0, Y_ij_star_1),
+      Y_ij_0 = if_else(V_ij_0 == 1, Y_ij_0, NA),
+      Y_ij_1 = if_else(V_ij_1 == 1, Y_ij_1, NA),
+      Y_ij = coalesce(Y_ij_0, Y_ij_1)
+    )
+  
+  W_i <- cbind(W_i, T_ij)
+  
+  # Calculating Propensity Scores
+  
+  propensity <- glm(T_ij ~ w1 + w2 + h1 + h2 + h3 + x1 + x2 + x3, data = realistic_data, family = "binomial")
+  pi_hat <- predict(propensity, realistic_data, type = "response")
+  
+  # Calculations!
+  ATE[i] <- mean(true_data$Y_ij_1 - true_data$Y_ij_0)
+  SSW[i] <- calculate_ATE_prop_CO(realistic_data, pi_hat)
+  SSO[i] <- calculate_ATE_SSO_CO(realistic_data, pi_hat)
+
+}
+
+SSW <- cbind(ATE = SSW, type = "SSW")
+SSO <- cbind(ATE = SSO, type = "SSO")
+
+df <- as.data.frame(rbind(SSW, SSO))
+df$ATE <- as.numeric(df$ATE)
+
+plot_CO <- df |>
+  ggplot(aes(x = type, y = ATE, color = type)) +
+  geom_boxplot() +
+  geom_hline(yintercept = mean(ATE), linetype = "dashed", alpha = 0.5) +
+  theme_bw(base_size = 24) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  theme(legend.position = "bottom") +
+  labs(x = NULL,
+       y = "Estimated ATE",
+       color = NULL) 
+
+ggsave("./images/plot_CO.png", plot = plot_CO, width = 12, height = 5, dpi = 300, units = "in")
+#################### Clustered, Cluster Level ##############################
 
