@@ -22,8 +22,7 @@ MC_CO_Results<- read_csv(here::here("cluster-computed-csv", "MC-CO-Results.csv")
 
 ```{r}
 MC_CO_Results <- MC_CO_Results |>
-  mutate(bias_cluster = ATE_cluster - ATE,
-         bias = ATE_agg - ATE,
+  mutate(bias = ATE_est - ATE,
          bias_low = bias - (1.96 * bias_se),
          bias_high = bias + (1.96 * bias_se),
          cov_low = coverage - (1.96 * cov_se),
