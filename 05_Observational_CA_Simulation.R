@@ -73,8 +73,11 @@ boot_ATE <- function(data, parametric){
     # Should this be by individual or by clusters? Seemingly Clusters
     sample_idx <- sample(1:num_cluster, size = num_cluster, replace = T)
     boot_data <- lapply(seq_along(sample_idx), function(idx){
-      data[data$cluster_assign == sample_idx[idx], ] |>
+      temp <- data[data$cluster_assign == sample_idx[idx], ] |>
         mutate(cluster_assign = idx)
+      temp <- temp[sample(1:nrow(temp), size = nrow(temp), replace = T), ] |>
+        mutate(h1 = mean(x1), h2 = mean(x2), h3 = mean(x3))
+      temp
     })
     boot_data <- data.table::rbindlist(boot_data)
     propensity <- glm(T_ij ~ w1 + w2 + h1 + h2 + h3 + x1 + x2 + x3, data = boot_data, family = "binomial")
